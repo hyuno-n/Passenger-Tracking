@@ -1,0 +1,9 @@
+__pycache__/
+boost_track/external/
+data/
+*.xml
+*.jpg
+*.png
+*.jpeg
+*.pth
+*.tar
