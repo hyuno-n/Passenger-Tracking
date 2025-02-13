@@ -226,29 +226,106 @@ class VideoWriter:
             self.writer.release()
             print(f"Video saved to: {self.video_path}")
 
-def process_yolo_detection(results) -> Optional[Tuple[np.ndarray, np.ndarray, List[List]]]:
+def is_mostly_inside(inner, outer, area_ratio_threshold=0.9):
+    """작은 박스의 90% 이상이 큰 박스 안에 있는지 확인"""
+    # 교집합 영역 계산
+    x1 = max(inner[0], outer[0])
+    y1 = max(inner[1], outer[1])
+    x2 = min(inner[2], outer[2])
+    y2 = min(inner[3], outer[3])
+    intersection = max(0, x2 - x1) * max(0, y2 - y1)
+    
+    # 작은 박스의 전체 영역
+    area_inner = (inner[2]-inner[0])*(inner[3]-inner[1])
+    
+    # 영역 비율 계산
+    ratio = intersection / area_inner
+    return ratio >= area_ratio_threshold
+
+
+def remove_nested_boxes(boxes, scores):
+    """중첩 박스 제거 알고리즘"""
+    # 1. confidence score 기준으로 내림차순 정렬
+    sorted_indices = np.argsort(scores)[::-1]  # 높은 점수부터 처리
+    keep = []  # 유지할 박스의 인덱스
+    
+    while sorted_indices.size > 0:
+        # 2. 가장 높은 confidence를 가진 박스 선택
+        current_idx = sorted_indices[0]
+        keep.append(current_idx)
+        current_box = boxes[current_idx]
+        
+        # 3. 남은 박스들과 비교
+        remaining = []
+        for idx in sorted_indices[1:]:
+            target_box = boxes[idx]
+            
+            # 4. 박스 크기 비교 (큰 박스 vs 작은 박스)
+            area_current = (current_box[2]-current_box[0])*(current_box[3]-current_box[1])
+            area_target = (target_box[2]-target_box[0])*(target_box[3]-target_box[1])
+            
+            # 5. 큰 박스와 작은 박스 관계 결정
+            if area_current > area_target:
+                large_box, small_box = current_box, target_box
+            else:
+                large_box, small_box = target_box, current_box
+            
+            # 6. 중첩 판단
+            condition = is_mostly_inside(small_box, large_box)
+
+            # 7. 중첩되지 않은 박스만 남김
+            if not condition:
+                remaining.append(idx)
+        
+        # 8. 다음 반복을 위해 남은 박스들로 업데이트
+        sorted_indices = np.array(remaining)
+    
+    return [boxes[i] for i in keep], [scores[i] for i in keep]
+
+
+def process_yolo_detection(results) -> Optional[Tuple[np.ndarray, List[List]]]:
     dets = []
-    xywhs = []
-    yolo_boxes = []  
+    yolo_boxes = []
+    
     for result in results:
         boxes = result.boxes
         for i in range(len(boxes)):
-            x1, y1, x2, y2 = boxes.xyxy[i].cpu().numpy()
+            # YOLO 박스 정보 추출
+            box = boxes.xyxy[i].cpu().numpy()
+            x1, y1, x2, y2 = box
             conf = boxes.conf[i].cpu().numpy()
-            cls = boxes.cls[i].cpu().numpy()
             
-            if cls == 0:  
-                dets.append([x1, y1, x2, y2, conf])
-                w = x2 - x1
-                h = y2 - y1
-                x_center = x1 + w/2
-                y_center = y1 + h/2
-                xywhs.append([x_center, y_center, w, h])
-                yolo_boxes.append([x1, y1, x2, y2, conf, i])  
+            # 박스 정보 저장
+            dets.append([x1, y1, x2, y2, conf])
+            
+            # YOLO 박스 정보와 인덱스 저장
+            yolo_boxes.append([x1, y1, x2, y2, conf, i])
+    
+    if not dets:
+        return None, None
+        
+    # 중첩 박스 제거
+    dets = np.array(dets)
+    boxes = dets[:, :4]  # 박스 좌표
+    scores = dets[:, 4]  # confidence scores
+    
+    # remove_nested_boxes 함수 적용
+    filtered_boxes, filtered_scores = remove_nested_boxes(boxes, scores)
+    
+    # 필터링된 결과로 리스트 재구성
+    filtered_dets = []
+    filtered_yolo_boxes = []
+    
+    for i, (box, score) in enumerate(zip(filtered_boxes, filtered_scores)):
+        x1, y1, x2, y2 = box
+        
+        # 박스 정보 저장
+        filtered_dets.append([x1, y1, x2, y2, score])
+        
+        # YOLO 박스 정보와 인덱스 저장
+        filtered_yolo_boxes.append([x1, y1, x2, y2, score, i])
                 
-    return (np.array(dets) if dets else None, 
-            np.array(xywhs) if xywhs else None,
-            yolo_boxes if yolo_boxes else None)
+    return (np.array(filtered_dets), filtered_yolo_boxes)
 
 def setup_tracker(args) -> BoostTrack:
     config = BoostTrackConfig(
@@ -506,27 +583,24 @@ def main():
         if np_img is None:
             continue
             
-        results = model.predict(np_img, device='cuda', classes=[0],
-                              iou=0.65, conf=0.55)
+        results = model.predict(np_img, device='cuda', classes=[0],iou=0.65, conf=0.5)
         
+        dets, yolo_boxes = process_yolo_detection(results) 
+        
+        # 필터링된 결과로 시각화
         yolo_plot = results[0].plot()
-        boxes = results[0].boxes
-        for i in range(len(boxes)):
-            if boxes.cls[i].cpu().numpy() == 0:  
-                x1, y1, x2, y2 = boxes.xyxy[i].cpu().numpy()
-                cv2.putText(yolo_plot, f"#{i}", (int(x1), int(y1)-10),
-                          cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 255, 0), 2)
+        if yolo_boxes is not None:
+            for i, box in enumerate(yolo_boxes):
+                x1, y1, x2, y2 = map(int, box[:4])
+                # 박스 그리기
+                cv2.rectangle(yolo_plot, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                # 인덱스 표시
+                cv2.putText(yolo_plot, f"#{i}", (x1, y1-10),
+                           cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 255, 0), 2)
+        
+        # 프레임 정보 표시
         cv2.putText(yolo_plot, f"Frame: {idx} ({img_name})", (10, 30),
-                          cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 255, 0), 2)        
-        
-        dets, xywhs, yolo_boxes = process_yolo_detection(results) 
-        """
-        ====    Yolo탐지 전처리 결과  ===
-        Dets = [[x1,y1,x2,y2,conf] , [...]]
-        xywhs = [x_center , y_center , w, h]
-        yolo_boxes = [x1,y1,x2,y2,conf , yolo_IDX]
-        
-        """
+                   cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 255, 0), 2)
         
         if dets is None or len(dets) == 0: # 검출객체가없다면 Image Pass
             continue
