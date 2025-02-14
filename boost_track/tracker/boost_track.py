@@ -37,8 +37,6 @@ def convert_bbox_to_z(bbox):
     return np.array([x, y, h,  r]).reshape((4, 1))
 
 
-
-
 def convert_x_to_bbox(x, score=None):
     """
     Takes a bounding box in the centre form [x,y,h,r] and returns it in the form
@@ -62,14 +60,14 @@ class KalmanBoxTracker(object):
 
     count = 0
 
-    def __init__(self, bbox, emb: Optional[np.ndarray] = None):
+    def __init__(self, bbox, emb: Optional[np.ndarray] = None, yolo_conf: float = 0.0):
         """
         Initialises a tracker using initial bounding box.
         """
 
         self.bbox_to_z_func = convert_bbox_to_z
         self.x_to_bbox_func = convert_x_to_bbox
-
+        self.yolo_conf = yolo_conf
         self.time_since_update = 0
         self.id = KalmanBoxTracker.count
         KalmanBoxTracker.count += 1
@@ -78,7 +76,7 @@ class KalmanBoxTracker(object):
         self.emb = emb
         self.hit_streak = 0
         self.age = 0
-        self.original_bbox = bbox  # 원본 YOLO 박스 저장
+        self.original_bbox = bbox  # 원본 YOLO 박스 저 장
 
     def get_confidence(self, coef: float = 0.9) -> float:
         n = 7
@@ -158,7 +156,7 @@ class BoostTrack(object):
         self.det_thresh = cfg.det_thresh
         self.iou_threshold = cfg.iou_threshold
         
-        # 매칭 알고리즘에 사용할 가중치
+        # 탐지된 객체와 트래커 매칭 알고리즘에 사용할 가중치
         self.lambda_iou = cfg.lambda_iou
         self.lambda_mhd = cfg.lambda_mhd
         self.lambda_shape = cfg.lambda_shape
@@ -171,7 +169,7 @@ class BoostTrack(object):
         self.use_sb = cfg.use_sb if hasattr(cfg, 'use_sb') else True  # Soft boost 사용 여부 
         self.use_vt = cfg.use_vt if hasattr(cfg, 'use_vt') else True  # Varying threshold 사용 여부
         
-        # Re-ID 초기화
+        # Re-ID(객체별 특징 추출 모델) 초기화
         if cfg.use_reid:
             self.embedder = EmbeddingComputer(cfg)
         else:
@@ -199,7 +197,8 @@ class BoostTrack(object):
         dets 형태 [x1,y1,x2,y2,score]  
                 
         """
-    
+        
+        orgin_dets = dets.copy()
         if dets is None:
             return np.empty((0, 5))
         
@@ -212,13 +211,12 @@ class BoostTrack(object):
         dets = deepcopy(dets)
         dets[:, :4] /= scale
 
-        if self.ecc is not None: # Enhanced Correlation Coefficient (ECC) 연속된 프레임간의 카메라 움직임을 추정하는 알고리즘
+        # Enhanced Correlation Coefficient (ECC) 연속된 프레임간의 움직이는 카메라의 움직임을 추정하는 알고리즘
+        if self.ecc is not None: 
             transform = self.ecc(img_numpy, self.frame_count, tag) # 현재 프레임과 이전프레임 사이에 변환행렬 계산
             for trk in self.trackers:
                 trk.camera_update(transform)
 
-        trks = np.zeros((len(self.trackers), 5))
-        
         
                 
         # 비활성 트래커 관리
@@ -229,9 +227,12 @@ class BoostTrack(object):
                     current_inactive.append(trk)
                     
         self.inactive_trackers = current_inactive
-                
+        
+        # 신뢰도, 트래커 초기화
         confs = np.zeros((len(self.trackers), 1))
+        trks = np.zeros((len(self.trackers), 5))
 
+        # 트래커(칼만 필터) 예측
         for t in range(len(trks)):
             pos = self.trackers[t].predict()[0]
             confs[t] = self.trackers[t].get_confidence()
@@ -243,9 +244,17 @@ class BoostTrack(object):
         if self.use_duo_boost:
             dets = self.duo_confidence_boost(dets)
 
-        remain_inds = dets[:, 4] >= self.det_thresh # dets shape: [N, 5] 객체된객체수 , 객체수마다 가지고있는 x1,y1,x2,y2,score        
+        remain_inds = dets[:, 4] >= self.det_thresh # dets shape: [N, 5] 객체된객체수 , 객체수마다 가지고있는 x1,y1,x2,y2,score   
+
+        print('====================')
+        print("det thresh",self.det_thresh)
+        print('orgin_dets',orgin_dets)
+        print('remain_inds',remain_inds)
+        print('====================')
+        
         dets = dets[remain_inds] # 새로운 ID를 부여받지도 않고, 트래킹 대상으로도 고려되지 않습니다. 임계치미만의 객체들은
         scores = dets[:, 4] # 신뢰도추출 > 임계치 
+
 
         # 임베딩 기반 객체 유사도 계산
         emb_cost = None  
@@ -272,7 +281,8 @@ class BoostTrack(object):
         mh_matrix = self.get_mh_dist_matrix(dets)
         cost_matrix = (self.lambda_iou * iou_matrix + self.lambda_mhd * mh_matrix + self.lambda_shape * shape_similarity(dets, trks)) / (self.lambda_iou + self.lambda_mhd + self.lambda_shape)
         
-        # 매칭 수행
+        # 객체 탐지와 트래커 매칭 수행
+        print("assoc입력전 ",dets)
         matched, unmatched_dets, unmatched_trks, sym_matrix = associate(
             dets,
             trks,
@@ -293,58 +303,6 @@ class BoostTrack(object):
         print(f"현재 트래커 ID: {[t.id for t in self.trackers]}")
         print(f"비활성 트래커 ID: {[t.id for t in self.inactive_trackers]}\n")
         
-        # if len(matched) > 0:
-        #     print("[매칭된 정보]")
-        #     print(f"검출-트래커 쌍: {matched}")
-        #     print(f"매칭된 트래커 ID: {[self.trackers[t].id for t in matched[:, 1]]}")
-        #     print("\n[검출 객체 -> 트래커 ID 매핑]")
-        #     for m in matched:
-        #         det_idx, trk_idx = m
-        #         trk_id = self.trackers[trk_idx].id
-        #         print(f"검출 {det_idx} -> ID {trk_id}")
-        #     print()
-        
-        # if len(unmatched_dets) > 0:
-        #     print(f"[매칭되지 않은 검출]: {unmatched_dets}\n")
-        
-        # if len(unmatched_trks) > 0:
-        #     print("[매칭되지 않은 트래커]")
-        #     print(f"인덱스: {unmatched_trks}")
-        #     print(f"트래커 ID: {[self.trackers[t].id for t in unmatched_trks]}\n")
-        
-        # print("=== 상세 매칭 정보 ===\n")
-        # print("[임베딩 유사도 행렬]")
-        # if emb_cost is not None:
-        #     pd.set_option('display.float_format', lambda x: '%.5f' % x)
-        #     df = pd.DataFrame(emb_cost, columns=[f'ID_{t.id}' for t in self.trackers])
-        #     df.index = [f'Det_{i}' for i in range(len(emb_cost))]
-        #     print(df)
-        # else:
-        #     print("임베딩 정보 없음")
-            
-        # print("\n[IOU 행렬]")
-        # pd.set_option('display.float_format', lambda x: '%.5f' % x)
-        # df = pd.DataFrame(iou_matrix, columns=[f'ID_{t.id}' for t in self.trackers])
-        # df.index = [f'Det_{i}' for i in range(len(iou_matrix))]
-        # print(df)
-        
-        # print("\n[마할라노비스 거리 행렬]")
-        # pd.set_option('display.float_format', lambda x: '%.5f' % x)
-        # df = pd.DataFrame(mh_matrix, columns=[f'ID_{t.id}' for t in self.trackers])
-        # df.index = [f'Det_{i}' for i in range(len(mh_matrix))]
-        # print(df)
-        
-        # print("\n[최종 매칭 결과 상세]")
-        # for m in matched:
-        #     det_idx, trk_idx = m
-        #     trk_id = self.trackers[trk_idx].id
-        #     print(f"검출 {det_idx} -> ID {trk_id} (임베딩: {emb_cost[det_idx, trk_idx]:.5f}, "
-        #           f"IOU: {iou_matrix[det_idx, trk_idx]:.5f}, "
-        #           f"마할라노비스: {mh_matrix[det_idx, trk_idx]:.5f})")
-        
-        # print(f"\n{'='*50}")
-        
-        
         trust = (dets[:, 4] - self.det_thresh) / (1 - self.det_thresh)
         af = 0.95
         dets_alpha = af + (1 - af) * (1 - trust)
@@ -358,28 +316,25 @@ class BoostTrack(object):
 
         for i in unmatched_dets: # re-id가 안된 새로운 id는 tracking추가
             if dets[i, 4] >= self.det_thresh:
-                self.trackers.append(KalmanBoxTracker(dets[i, :], emb=dets_embs[i]))
-
-
+                self.trackers.append(KalmanBoxTracker(dets[i, :], emb=dets_embs[i] , yolo_conf = dets[i, 4]))
                 
         # Update tracker states and remove dead trackers
         i = len(self.trackers)
+        print("시각화전 dets갯수" , i)
         for trk in reversed(self.trackers):
             if trk.time_since_update > self.max_age:
                 self.trackers.pop(i-1)
             i -= 1
         ret = []
         
-        i = len(self.trackers)
         for trk in reversed(self.trackers):
-            d = trk.get_state()[0]
-            if (trk.time_since_update < 1) and (trk.hit_streak >= self.min_hits or self.frame_count <= self.min_hits):
+            if trk.time_since_update < 1:
                 # 칼만 필터 상태 대신 원본 YOLO 박스 사용
                 original_bbox = trk.get_original_bbox()
                 ret.append(np.concatenate((
                     original_bbox[:4],  # 원본 YOLO 좌표
                     [trk.id],          # 트래킹 ID
-                    [trk.get_confidence()]  # 신뢰도
+                    [trk.yolo_conf]  # 신뢰도
                 )).reshape(1, -1))
         
         if len(ret) > 0:

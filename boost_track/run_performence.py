@@ -53,7 +53,7 @@ class Visualizer:
             self.id_colors[track_id] = [random.randint(150, 255) for _ in range(3)]
         return self.id_colors[track_id]
 
-    def draw_detection_boxes(self, image: np.ndarray, dets: np.ndarray, yolo_boxes: List = None, frame_mapping: Dict = None) -> np.ndarray:
+    def draw_detection_boxes(self, image: np.ndarray, dets: np.ndarray, frame_mapping: Dict = None) -> np.ndarray:
         vis_img = image.copy()
 
         box_mapping = {}
@@ -242,7 +242,6 @@ def is_mostly_inside(inner, outer, area_ratio_threshold=0.9):
     ratio = intersection / area_inner
     return ratio >= area_ratio_threshold
 
-
 def remove_nested_boxes(boxes, scores):
     """중첩 박스 제거 알고리즘"""
     # 1. confidence score 기준으로 내림차순 정렬
@@ -282,50 +281,48 @@ def remove_nested_boxes(boxes, scores):
     
     return [boxes[i] for i in keep], [scores[i] for i in keep]
 
-
-def process_yolo_detection(results) -> Optional[Tuple[np.ndarray, List[List]]]:
-    dets = []
-    yolo_boxes = []
+def process_yolo_detection(results) -> Optional[np.ndarray]:
+    """YOLO 탐지 결과를 후처리하여 중첩된 박스를 제거하고 필터링된 탐지 결과를 반환합니다.
     
-    for result in results:
-        boxes = result.boxes
-        for i in range(len(boxes)):
-            # YOLO 박스 정보 추출
-            box = boxes.xyxy[i].cpu().numpy()
-            x1, y1, x2, y2 = box
-            conf = boxes.conf[i].cpu().numpy()
-            
-            # 박스 정보 저장
-            dets.append([x1, y1, x2, y2, conf])
-            
-            # YOLO 박스 정보와 인덱스 저장
-            yolo_boxes.append([x1, y1, x2, y2, conf, i])
-    
-    if not dets:
-        return None, None
+    Args:
+        results: YOLO 모델의 탐지 결과
         
-    # 중첩 박스 제거
-    dets = np.array(dets)
-    boxes = dets[:, :4]  # 박스 좌표
-    scores = dets[:, 4]  # confidence scores
+    Returns:
+        Optional[np.ndarray]: 필터링된 탐지 결과 배열 [x1, y1, x2, y2, confidence]
+                             탐지된 객체가 없는 경우 None 반환
+    """
+    def extract_box_info(boxes: torch.Tensor) -> List[List[float]]:
+        """YOLO 박스 정보를 추출하여 리스트로 변환"""
+        detections = []
+        for i in range(len(boxes)):
+            box = boxes.xyxy[i].cpu().numpy()
+            conf = boxes.conf[i].cpu().numpy()
+            detections.append([*box, conf])
+        return detections
+
+    # 모든 탐지 결과 수집
+    all_detections = []
+    for result in results:
+        all_detections.extend(extract_box_info(result.boxes))
     
-    # remove_nested_boxes 함수 적용
+    if not all_detections:
+        return None
+    
+    # numpy 배열로 변환
+    detections = np.array(all_detections)
+    boxes = detections[:, :4]
+    scores = detections[:, 4]
+    
+    # 중첩 박스 제거
     filtered_boxes, filtered_scores = remove_nested_boxes(boxes, scores)
     
-    # 필터링된 결과로 리스트 재구성
-    filtered_dets = []
-    filtered_yolo_boxes = []
+    # 최종 결과 형식으로 변환
+    filtered_detections = np.column_stack([
+        filtered_boxes,
+        np.array(filtered_scores).reshape(-1, 1)
+    ])
     
-    for i, (box, score) in enumerate(zip(filtered_boxes, filtered_scores)):
-        x1, y1, x2, y2 = box
-        
-        # 박스 정보 저장
-        filtered_dets.append([x1, y1, x2, y2, score])
-        
-        # YOLO 박스 정보와 인덱스 저장
-        filtered_yolo_boxes.append([x1, y1, x2, y2, score, i])
-                
-    return (np.array(filtered_dets), filtered_yolo_boxes)
+    return filtered_detections
 
 def setup_tracker(args) -> BoostTrack:
     config = BoostTrackConfig(
@@ -512,9 +509,9 @@ def match_detections_with_xml(box_mapping: Dict, xml_result: List , track_boxes 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser("BoostTrack for image sequence")
-    parser.add_argument("--yolo_model", type=str, default="yolo11x.pt")
-    parser.add_argument("--img_path", type=str, default="data/cam2_labeld")
-    parser.add_argument("--model_name", type=str, 
+    parser.add_argument("--yolo_model", type=str, default="external/weights/yolo11x.pt")
+    parser.add_argument("--img_path", type=str, default="data/cam2_labeld_add_rect")
+    parser.add_argument("--model_name", type=str,
                        choices=['convNext', 'dinov2', 'swinv2', 'CLIP', 'CLIP_RGB',
                                'La_Transformer', 'CTL', 'VIT-B/16+ICS_SSL', 'VIT_SSL_MARKET'],
                        default='VIT-B/16+ICS_SSL')
@@ -542,10 +539,19 @@ def main():
     GeneralSettings.values['use_ecc'] = False
     GeneralSettings.values['embedding_method'] = args.emb_method
 
+    # YOLO 모델 초기화
     model = YOLO(args.yolo_model)
+    
+    # 트래커 모델 설정
     tracker = setup_tracker(args)
+    
+    # 시각화 모델 설정
     visualizer = Visualizer()
+    
+    # ID 스위치 분석 모델 설정
     id_switch_analyzer = IDSwitchAnalyzer()  
+    
+    # 시각화 설정
     vis_config = VisualizationConfig(
         visualize=args.visualize,
         save_video=args.save_video,
@@ -572,6 +578,7 @@ def main():
             
     yolo_label_mapping  = {}
 
+    # 이전 프레임 이미지 저장 덱
     previous_track_images = deque(maxlen=5)
     
     for idx, (img_name, xml_name) in enumerate(tqdm(valid_pairs)):
@@ -582,15 +589,17 @@ def main():
         np_img = cv2.imread(img_path)
         if np_img is None:
             continue
-            
-        results = model.predict(np_img, device='cuda', classes=[0],iou=0.65, conf=0.5)
         
-        dets, yolo_boxes = process_yolo_detection(results) 
+        # YOLO 모델 예측
+        results = model.predict(np_img, device='cuda', classes=[0], iou=0.65, conf=0.5)
+        
+        # YOLO 탐지 결과 처리
+        dets = process_yolo_detection(results) 
         
         # 필터링된 결과로 시각화
         yolo_plot = results[0].plot()
-        if yolo_boxes is not None:
-            for i, box in enumerate(yolo_boxes):
+        if dets is not None:
+            for i, box in enumerate(dets):
                 x1, y1, x2, y2 = map(int, box[:4])
                 # 박스 그리기
                 cv2.rectangle(yolo_plot, (x1, y1), (x2, y2), (0, 255, 0), 2)
@@ -602,14 +611,19 @@ def main():
         cv2.putText(yolo_plot, f"Frame: {idx} ({img_name})", (10, 30),
                    cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 255, 0), 2)
         
-        if dets is None or len(dets) == 0: # 검출객체가없다면 Image Pass
+        # 검출객체가없다면 Image Pass
+        if dets is None or len(dets) == 0: 
             continue
         
+        # 이미지 전처리
         img_rgb = cv2.cvtColor(np_img, cv2.COLOR_BGR2RGB)
         img_tensor = torch.from_numpy(img_rgb).float().cuda()
         img_tensor = img_tensor.permute(2, 0, 1).unsqueeze(0)
 
-        targets = tracker.update(dets, img_tensor, np_img, str(frame_id)) # 반환 형태: [[x1, y1, x2, y2, score, id], ...]
+        # 객체 트래킹 업데이트
+        targets = tracker.update(dets, img_tensor, np_img, str(frame_id)) # 반환 형태: [[x1, y1, x2, y2, id, score], ...]
+        
+        # 트래커 필터링
         tlwhs, ids, confs = utils.filter_targets(targets,
                                                GeneralSettings['aspect_ratio_thresh'],
                                                GeneralSettings['min_box_area'])
@@ -617,15 +631,11 @@ def main():
         frame_mapping = {}
         track_boxes = []
         
-        
-        
-        
         """
         해당코드는   Deprecation  예정
         """
-        if yolo_boxes is not None and ids is not None: # 무언가 탐지를한다면?
-            for yolo_box in yolo_boxes:
-                det_idx = yolo_box[5]  # yolo탐지순서 -> Yolo_IDX
+        if dets is not None and ids is not None: # 무언가 탐지를한다면?
+            for det_idx, yolo_box in enumerate(dets):
                 max_iou = 0
                 matched_id = None
                 for tlwh, track_id in zip(tlwhs, ids):
@@ -641,7 +651,7 @@ def main():
                 if matched_id is not None:
                     frame_mapping[det_idx] = matched_id # Yolo_INDEX : Track_ID Yolo탐지순서가 어떤 트랙ID를 부여받았는지?
 
-            yolo_tracking_id, box_mapping = visualizer.draw_detection_boxes(np_img, dets, yolo_boxes, frame_mapping)    #{yolo idx : [track_id , x1,y1,x2,y2,conf]}
+            yolo_tracking_id, box_mapping = visualizer.draw_detection_boxes(np_img, dets, frame_mapping)    #{yolo idx : [track_id , x1,y1,x2,y2,conf]}
         track_img, track_id_list = visualizer.draw_tracking_results(np_img, tlwhs, ids)
     
         print("=============================")
@@ -674,13 +684,13 @@ def main():
         # print("Tracking ID to XML ID:", mapping_analysis['tracking_to_xml'])
         
         # YOLO 객체 탐지 순서와 XML 박스를 매핑
-        yolo_label_mapping = map_yolo_to_xml_labels(yolo_boxes, xml_path)
+        yolo_label_mapping = map_yolo_to_xml_labels(dets, xml_path)
         
         # YOLO 바운딩 박스 매핑 생성
         yolo_bbox_mapping = {}
-        for i, box in enumerate(yolo_boxes):
+        for i, box in enumerate(dets):
             x1, y1, x2, y2 = box[:4]  # box는 [x1, y1, x2, y2, conf, det_idx] 형식
-            yolo_bbox_mapping[int(box[5])] = (float(x1), float(y1), float(x2), float(y2))
+            yolo_bbox_mapping[i] = (float(x1), float(y1), float(x2), float(y2))
         
         # # ID Switch 분석 업데이트
         # switch_analysis = id_switch_analyzer.update(
@@ -715,7 +725,7 @@ def main():
                           cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 255, 0), 2)
         
         # YOLO와 XML 매핑 시각화
-        mapping_vis = visualizer.visualize_yolo_xml_mapping(np_img.copy(), yolo_boxes, xml_path, yolo_label_mapping)
+        mapping_vis = visualizer.visualize_yolo_xml_mapping(np_img.copy(), dets, xml_path, yolo_label_mapping)
         
         # Display results
         if vis_config.visualize :
