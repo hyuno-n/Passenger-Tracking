@@ -333,9 +333,9 @@ def setup_tracker(args) -> BoostTrack:
         det_thresh=0.55, # 탐지 신뢰도 임계값
         iou_threshold=0.65,
         emb_sim_score=0.60,
-        lambda_iou=0.05,
-        lambda_mhd=0.25,
-        lambda_shape=0.95,
+        lambda_iou=0.05, # 탐지-트랙 iou 신뢰도 결합 가중치
+        lambda_mhd=0.05, # 마하라노비스 거리 유사도 가중치
+        lambda_shape=0.9, # 형태 유사도 가중치
         use_dlo_boost=True,
         use_duo_boost=True,
         dlo_boost_coef=0.75,
@@ -626,7 +626,7 @@ def main():
         # 트래커 필터링
         tlwhs, ids, confs = utils.filter_targets(targets,
                                                GeneralSettings['aspect_ratio_thresh'], # 박스의 너비 / 높이 비율이 최대허용값 이상이면 필터링
-                                               GeneralSettings['min_box_area']) # 박스의 넓이가 최소허용값 이하이면 필터링
+                                               GeneralSettings['min_box_area']) # 박스의 넓이(픽셀단위)가 최소허용값 이하이면 필터링
         
         frame_mapping = {}
         track_boxes = []
@@ -653,15 +653,6 @@ def main():
 
             yolo_tracking_id, box_mapping = visualizer.draw_detection_boxes(np_img, dets, frame_mapping)    #{yolo idx : [track_id , x1,y1,x2,y2,conf]}
         track_img, track_id_list = visualizer.draw_tracking_results(np_img, tlwhs, ids)
-    
-        print("=============================")
-        print('Targets : ',targets)
-        print("Dets : " , dets)
-        print("TLWHS" , tlwhs)
-        print("Track_boxes " , track_boxes)
-        print("Box_Mapping :" ,box_mapping)
-        print("=============================")
-      
       
         # xml 레이블값들의 정보를 가져오고 시각화하는 함수임 레이블링 확인 코드
         
@@ -678,7 +669,7 @@ def main():
         mapping_analysis = match_detections_with_xml(box_mapping, xml_result , track_boxes)
         
         # # 매핑 결과 출력
-        print("\n=== Mapping Analysis ===")
+        # print("\n=== Mapping Analysis ===")
         # print("YOLO to Tracking ID:", mapping_analysis['yolo_to_tracking'])
         # print("YOLO to XML ID:", mapping_analysis['yolo_to_xml'])
         # print("Tracking ID to XML ID:", mapping_analysis['tracking_to_xml'])
