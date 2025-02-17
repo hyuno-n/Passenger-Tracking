@@ -33,7 +33,7 @@ class GeneralSettings:
         'dataset': 'mot17',
         'test_dataset': False,
         'min_box_area': 10, # 작은면적의 박스는 필터링
-        'aspect_ratio_thresh': 1.6 , # 검출된 박스의 너비 / 높이 비율이 최대허용값
+        'aspect_ratio_thresh': 5.0 , # 검출된 박스의 너비 / 높이 비율이 최대허용값
         'embedding_method' : 'default'
         
     }
