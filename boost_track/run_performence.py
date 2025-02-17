@@ -65,7 +65,7 @@ class Visualizer:
                 box_mapping.update({i: [track_id, x1, y1, x2, y2 , conf]})
                 
                 cv2.rectangle(vis_img, (int(x1), int(y1)), (int(x2), int(y2)), color, 2)
-                cv2.putText(vis_img, f"Y#{i}->T#{track_id}", (int(x1), int(y1)-10),
+                cv2.putText(vis_img, f"Y#{i}||T#{track_id}", (int(x1), int(y1)-10),
                           cv2.FONT_HERSHEY_DUPLEX, 0.7, color, 2)
             else:
                 cv2.rectangle(vis_img, (int(x1), int(y1)), (int(x2), int(y2)), (255, 255, 255), 2)
@@ -76,7 +76,7 @@ class Visualizer:
     def draw_tracking_results(self, image: np.ndarray, tlwhs: List, ids: List[int]) -> Tuple[np.ndarray, List[int]]:
         vis_img = image.copy()
         track_id_list = []
-        
+        print('tlwhs',tlwhs)
         for tlwh, track_id in zip(tlwhs, ids):
             x1, y1, w, h = tlwh
             x2, y2 = x1 + w, y1 + h
@@ -625,8 +625,8 @@ def main():
         
         # 트래커 필터링
         tlwhs, ids, confs = utils.filter_targets(targets,
-                                               GeneralSettings['aspect_ratio_thresh'],
-                                               GeneralSettings['min_box_area'])
+                                               GeneralSettings['aspect_ratio_thresh'], # 박스의 너비 / 높이 비율이 최대허용값 이상이면 필터링
+                                               GeneralSettings['min_box_area']) # 박스의 넓이가 최소허용값 이하이면 필터링
         
         frame_mapping = {}
         track_boxes = []
