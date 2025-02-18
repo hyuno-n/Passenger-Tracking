@@ -499,13 +499,16 @@ def main():
         # xml 레이블값들의 정보를 가져오고 시각화하는 함수임 레이블링 확인 코드
         
         xml_result = utils.get_bboxes_from_xml(xml_path) #  [xml_id , x1,y1,x2,y2 ] 
+        print("tlwhs",tlwhs)
+        print("xml_result",xml_result)
+        print("="*50)
         xml_vis = visualizer.draw_xml_boxes(np_img, xml_result , idx) 
         
         # 매핑 분석
     
         """
-        YOLO_IDX 탐지순서 : 부여받은 Tracking_ID (가변)
-        YOLO_IDX : XML_IDX (불변)
+        YOLO_IDX 탐지순서 : 부여받은 Tracking_I D (prediction)
+        YOLO_IDX : XML_IDX (Ground Truth)
         Tracking_ID : XML_ID  
         """
         mapping_analysis = utils.match_detections_with_xml(box_mapping, xml_result , track_boxes)
@@ -517,7 +520,7 @@ def main():
         # print("Tracking ID to XML ID:", mapping_analysis['tracking_to_xml'])
         
         # YOLO 객체 탐지 순서와 XML 박스를 매핑
-        yolo_label_mapping = utils.map_yolo_to_xml_labels(dets, xml_path)
+        yolo_label_mapping = utils.match_yolo_to_gt(dets, xml_path)
         
         # YOLO 바운딩 박스 매핑 생성
         yolo_bbox_mapping = {}
