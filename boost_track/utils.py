@@ -3,7 +3,7 @@ import os
 
 import numpy as np
 import xml.etree.ElementTree as ET
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 
 def write_results_no_score(filename, results):
@@ -131,6 +131,18 @@ def calculate_iou(boxA, boxB):
 
     return inter_area / (boxA_area + boxB_area - inter_area + 1e-10)
 
+def calculate_centroid(box):
+    """바운딩 박스 중심 좌표 계산"""
+    x1, y1, x2, y2 = box
+    return ((x1 + x2) / 2, (y1 + y2) / 2)
+
+
+def calculate_euclidean_distance(box1, box2):
+    """유클리드 거리 계산"""
+    c1 = calculate_centroid(box1)
+    c2 = calculate_centroid(box2)
+    return np.linalg.norm(np.array(c1) - np.array(c2))
+
 def get_bboxes_from_xml(xml_file):
     """XML 파일에서 bounding box 정보 추출"""
     tree = ET.parse(xml_file)
@@ -180,8 +192,62 @@ def map_yolo_to_xml_labels(yolo_boxes, xml_file):
         
         if max_iou >= 0.5 and best_xml_name is not None:
             yolo_label_mapping[yolo_idx] = best_xml_name
-    
+    print("yolomapping",yolo_label_mapping)
     return yolo_label_mapping
+
+def match_yolo_to_gt(yolo_boxes, xml_file, iou_threshold=0.5, distance_threshold=100):
+    """
+    YOLO 탐지 결과와 GT 데이터를 매칭 (IoU + 거리 기반 보완)
+    
+    :param yolo_boxes: YOLO 탐지 결과 [[x1, y1, x2, y2, conf], ...]
+    :param gt_boxes: GT 박스 [[xml_id, x1, y1, x2, y2], ...]
+    :param iou_threshold: IoU 매칭 기준
+    :param distance_threshold: 거리 기반 보완 기준
+    :return: YOLO 탐지 인덱스 → GT ID 매핑 딕셔너리
+    """
+    gt_boxes = get_bboxes_from_xml(xml_file)
+    yolo_to_gt_mapping = {}
+    unmatched_yolo = []
+    unmatched_gt = list(range(len(gt_boxes)))
+
+    for yolo_idx, yolo_box in enumerate(yolo_boxes):
+        max_iou = 0
+        best_gt_idx = None
+
+        for gt_idx, gt_box in enumerate(gt_boxes):
+            gt_bbox = gt_box[1:]  # GT 좌표
+            iou_value = calculate_iou(yolo_box[:4], gt_bbox)
+
+            if iou_value > max_iou:
+                max_iou = iou_value
+                best_gt_idx = gt_idx
+
+        # IoU가 임계값을 넘으면 매칭
+        if max_iou >= iou_threshold:
+            yolo_to_gt_mapping[yolo_idx] = gt_boxes[best_gt_idx][0]
+            unmatched_gt.remove(best_gt_idx)  # 매칭된 GT 제거
+        else:
+            unmatched_yolo.append(yolo_idx)  # 매칭 실패한 YOLO 박스 기록
+
+    # IoU로 매칭되지 않은 YOLO 탐지 → 거리 기반으로 보완
+    for yolo_idx in unmatched_yolo:
+        yolo_box = yolo_boxes[yolo_idx][:4]
+        min_distance = float('inf')
+        best_gt_idx = None
+
+        for gt_idx in unmatched_gt:
+            gt_box = gt_boxes[gt_idx][1:]
+            distance = calculate_euclidean_distance(yolo_box, gt_box)
+
+            if distance < min_distance and distance < distance_threshold:
+                min_distance = distance
+                best_gt_idx = gt_idx
+
+        if best_gt_idx is not None:
+            yolo_to_gt_mapping[yolo_idx] = gt_boxes[best_gt_idx][0]
+            unmatched_gt.remove(best_gt_idx)
+
+    return yolo_to_gt_mapping
 
 
 def match_detections_with_xml(box_mapping: Dict, xml_result: List , track_boxes : List) -> Dict:
@@ -250,4 +316,3 @@ def match_detections_with_xml(box_mapping: Dict, xml_result: List , track_boxes 
                 mapping_result['tracking_to_xml'][tracking_id] = xml_id_mapping[xml_idx]
     
     return mapping_result
-
