@@ -5,20 +5,18 @@ import numpy as np
 import torch
 import argparse
 from collections import deque
-from typing import Dict, List, Tuple
 from tqdm import tqdm
 from dataclasses import dataclass
 from ultralytics import YOLO
 from natsort import natsorted
-import xml.etree.ElementTree as ET
 from default_settings import GeneralSettings, BoostTrackConfig
 from tracker.boost_track import BoostTrack
 import utils
-#from id_switch_analyzer import IDSwitchAnalyzer
 from id_switch_analyzer2 import IDSwitchAnalyzer
 from typing import Dict, List, Tuple , Optional
 import random
 from collections import deque
+
 
 @dataclass
 class VisualizationConfig:
@@ -76,7 +74,6 @@ class Visualizer:
     def draw_tracking_results(self, image: np.ndarray, tlwhs: List, ids: List[int]) -> Tuple[np.ndarray, List[int]]:
         vis_img = image.copy()
         track_id_list = []
-        print('tlwhs',tlwhs)
         for tlwh, track_id in zip(tlwhs, ids):
             x1, y1, w, h = tlwh
             x2, y2 = x1 + w, y1 + h
@@ -142,7 +139,7 @@ class Visualizer:
             np.ndarray: 매핑 관계가 시각화된 이미지
         """
         vis_img = image.copy()
-        xml_boxes = get_bboxes_from_xml(xml_file)
+        xml_boxes = utils.get_bboxes_from_xml(xml_file)
         
         # 색상 맵 생성 (매칭된 박스 쌍마다 고유한 색상 사용)
         colors = {}
@@ -351,161 +348,6 @@ def setup_tracker(args) -> BoostTrack:
     )
     return BoostTrack(config)
 
-def get_bboxes_from_xml(xml_file):
-    """XML 파일에서 bounding box 정보 추출"""
-    tree = ET.parse(xml_file)
-    root = tree.getroot()
-    bboxes = []
-    
-    for obj in root.findall('.//object'):
-        name = obj.find('name').text
-        bbox = obj.find('bndbox')
-        if bbox is not None:
-            xmin = float(bbox.find('xmin').text)
-            ymin = float(bbox.find('ymin').text)
-            xmax = float(bbox.find('xmax').text)
-            ymax = float(bbox.find('ymax').text)
-            bboxes.append((name, xmin, ymin, xmax, ymax))
-    
-    return sorted(bboxes) 
-
-
-def map_yolo_to_xml_labels(yolo_boxes: List[List[float]], xml_file: str) -> Dict[int, str]:
-    """
-    YOLO 객체 탐지 결과와 XML 파일의 박스를 비교하여 IOU가 가장 높은 것을 매핑합니다.
-    
-    Args:
-        yolo_boxes: YOLO 탐지 결과 박스 리스트 [x1, y1, x2, y2]
-        xml_file: XML 파일 경로
-    
-    Returns:
-        Dict[int, str]: YOLO 탐지 순서를 키로, XML name 필드 값을 값으로 하는 딕셔너리
-    """
-    # XML 파일에서 박스 정보 추출
-    xml_boxes = get_bboxes_from_xml(xml_file)
-    
-    yolo_label_mapping = {}
-    
-    # 각 YOLO 박스에 대해
-    for yolo_idx, yolo_box in enumerate(yolo_boxes):
-        max_iou = 0
-        best_xml_name = None
-        
-        # 모든 XML 박스와 비교
-        for xml_box in xml_boxes:
-            # XML 박스 좌표와 이름 추출
-            x1, y1, x2, y2 = xml_box[1:]
-            xml_name = xml_box[0]
-            
-            # IOU 계산
-            iou = calculate_iou(yolo_box, [x1, y1, x2, y2])
-            
-            # 현재까지의 최대 IOU보다 크면 업데이트
-            if iou > max_iou:
-                max_iou = iou
-                best_xml_name = xml_name
-        
-        # IOU가 임계값(예: 0.5) 이상인 경우에만 매핑
-        if max_iou >= 0.5 and best_xml_name is not None:
-            yolo_label_mapping[yolo_idx] = best_xml_name
-    
-    return yolo_label_mapping
-
-def calculate_iou(box1, box2):
-    """
-    두 박스 간의 IoU(Intersection over Union)를 계산
-    box 형식: [x1, y1, x2, y2]
-    """
-
-    x1_1, y1_1, x2_1, y2_1 = box1[:4]
-    x1_2, y1_2, x2_2, y2_2 = box2[:4]
-    
-    x1_i = max(x1_1, x1_2)
-    y1_i = max(y1_1, y1_2)
-    x2_i = min(x2_1, x2_2)
-    y2_i = min(y2_1, y2_2)
-    
-    if x2_i < x1_i or y2_i < y1_i:
-        return 0.0
-    
-    intersection = (x2_i - x1_i) * (y2_i - y1_i)
-    
-    area1 = (x2_1 - x1_1) * (y2_1 - y1_1)
-    area2 = (x2_2 - x1_2) * (y2_2 - y1_2)
-    
-    union = area1 + area2 - intersection
-    
-    iou = intersection / union if union > 0 else 0.0
-    
-    return iou
-
-def match_detections_with_xml(box_mapping: Dict, xml_result: List , track_boxes : List) -> Dict:
-    """ 
-    YOLO 탐지 순서와 XML ID 간의 매핑을 분석
-    
-    Args:
-    - box_mapping: YOLO 탐지 순서와 : [track_id , x1,y1,x2,y2,conf]
-    - xml_result: XML에서 추출한 박스 정보 [xml_id, x1,y1,x2,y2]
-    
-    Returns:
-    - 매핑 결과 딕셔너리
-      {
-        'yolo_to_tracking': {yolo_idx: tracking_id},
-        'yolo_to_xml': {yolo_idx: xml_id},
-        'tracking_to_xml': {tracking_id: xml_id}
-      }
-    """
-    # XML ID 추출 (name에서 숫자 추출)
-    xml_id_mapping = {}
-    for idx, (name, xmin, ymin, xmax, ymax) in enumerate(xml_result):
-        try:
-            xml_id = int(''.join(filter(str.isdigit, name)))
-            xml_id_mapping[idx] = xml_id
-        except:
-            # ID를 추출할 수 없는 경우 스킵
-            pass
-    
-    # IoU를 사용하여 YOLO 박스와 XML 박스 매핑
-    yolo_to_xml = {}
-    for yolo_idx, (track_info) in box_mapping.items():
-        tracking_id, x1, y1, x2, y2, conf = track_info
-        yolo_box = [x1, y1, x2, y2]
-        
-        best_iou = 0
-        best_xml_idx = None
-        for xml_idx, (name, xmin, ymin, xmax, ymax) in enumerate(xml_result):
-            xml_box = [xmin, ymin, xmax, ymax]
-            iou = calculate_iou(yolo_box, xml_box)
-            
-            if iou > best_iou:
-                best_iou = iou
-                best_xml_idx = xml_idx
-
-        if best_iou >= 0.7: # 해당코드가 문제가 발생할수도있음 만약에 XML박스와 yolo박스가 임계치가 만족하지않는다면
-            yolo_to_xml[yolo_idx] = best_xml_idx
-    
-    # 최종 매핑 결과 생성
-    """
-    YOLO_IDX 탐지순서 : 부여받은 Tracking_ID (가변)
-    YOLO_IDX : XML_IDX (불변)
-    Tracking_ID : XML_ID  
-    
-    """
-    mapping_result = {
-        'yolo_to_tracking': {k: v[0] for k, v in box_mapping.items()}, # yolo_IDX  : tracking_ID
-        'yolo_to_xml': yolo_to_xml, # yolo_IDX : XML_IDX
-        'tracking_to_xml': {} # tracking ID : XML_ID 
-    }
-    
-    # tracking_to_xml 매핑 추가
-    for yolo_idx, tracking_id in mapping_result['yolo_to_tracking'].items():
-        if yolo_idx in mapping_result['yolo_to_xml']:
-            xml_idx = mapping_result['yolo_to_xml'][yolo_idx]
-            if xml_idx in xml_id_mapping:
-                mapping_result['tracking_to_xml'][tracking_id] = xml_id_mapping[xml_idx]
-    
-    return mapping_result
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser("BoostTrack for image sequence")
@@ -591,7 +433,7 @@ def main():
             continue
         
         # YOLO 모델 예측
-        results = model.predict(np_img, device='cuda', classes=[0], iou=0.65, conf=0.5)
+        results = model.predict(np_img, device='cuda', classes=[0], iou=0.65, conf=0.5, verbose=False)
         
         # YOLO 탐지 결과 처리
         dets = process_yolo_detection(results) 
@@ -643,7 +485,7 @@ def main():
                     x2, y2 = x1 + tlwh[2], y1 + tlwh[3]
                     track_box = [x1, y1, x2, y2]
                     track_boxes.append(track_box)
-                    iou = calculate_iou(yolo_box[:4], track_box) # yolo box 와 track box IOU를 통햬 먜칭진행
+                    iou = utils.calculate_iou(yolo_box[:4], track_box) # yolo box 와 track box IOU를 통햬 먜칭진행
                     if iou > max_iou and iou > 0.6: # max이면서 겹칩정도가 적어도 N 이상은 되야함 
                         max_iou = iou
                         matched_id = track_id
@@ -656,7 +498,7 @@ def main():
       
         # xml 레이블값들의 정보를 가져오고 시각화하는 함수임 레이블링 확인 코드
         
-        xml_result = get_bboxes_from_xml(xml_path) #  [xml_id , x1,y1,x2,y2 ] 
+        xml_result = utils.get_bboxes_from_xml(xml_path) #  [xml_id , x1,y1,x2,y2 ] 
         xml_vis = visualizer.draw_xml_boxes(np_img, xml_result , idx) 
         
         # 매핑 분석
@@ -666,7 +508,7 @@ def main():
         YOLO_IDX : XML_IDX (불변)
         Tracking_ID : XML_ID  
         """
-        mapping_analysis = match_detections_with_xml(box_mapping, xml_result , track_boxes)
+        mapping_analysis = utils.match_detections_with_xml(box_mapping, xml_result , track_boxes)
         
         # # 매핑 결과 출력
         # print("\n=== Mapping Analysis ===")
@@ -675,7 +517,7 @@ def main():
         # print("Tracking ID to XML ID:", mapping_analysis['tracking_to_xml'])
         
         # YOLO 객체 탐지 순서와 XML 박스를 매핑
-        yolo_label_mapping = map_yolo_to_xml_labels(dets, xml_path)
+        yolo_label_mapping = utils.map_yolo_to_xml_labels(dets, xml_path)
         
         # YOLO 바운딩 박스 매핑 생성
         yolo_bbox_mapping = {}

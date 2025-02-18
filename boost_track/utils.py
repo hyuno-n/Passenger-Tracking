@@ -2,7 +2,8 @@ import glob
 import os
 
 import numpy as np
-import shutil
+import xml.etree.ElementTree as ET
+from typing import Dict, List, Tuple
 
 
 def write_results_no_score(filename, results):
@@ -113,3 +114,140 @@ def dti(txt_path, save_path, n_min=25, n_dti=20):
         seq_results = seq_results[1:]
         seq_results = seq_results[seq_results[:, 0].argsort()]
         dti_write_results(save_seq_txt, seq_results)
+
+
+def calculate_iou(boxA, boxB):
+    """
+    IoU(Intersection over Union) 계산
+    """
+    xA = max(boxA[0], boxB[0])
+    yA = max(boxA[1], boxB[1])
+    xB = min(boxA[2], boxB[2])
+    yB = min(boxA[3], boxB[3])
+
+    inter_area = max(0, xB - xA) * max(0, yB - yA)
+    boxA_area = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
+    boxB_area = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
+
+    return inter_area / (boxA_area + boxB_area - inter_area + 1e-10)
+
+def get_bboxes_from_xml(xml_file):
+    """XML 파일에서 bounding box 정보 추출"""
+    tree = ET.parse(xml_file)
+    root = tree.getroot()
+    bboxes = []
+    
+    for obj in root.findall('.//object'):
+        name = obj.find('name').text
+        bbox = obj.find('bndbox')
+        if bbox is not None:
+            xmin = float(bbox.find('xmin').text)
+            ymin = float(bbox.find('ymin').text)
+            xmax = float(bbox.find('xmax').text)
+            ymax = float(bbox.find('ymax').text)
+            bboxes.append((name, xmin, ymin, xmax, ymax))
+    
+    return sorted(bboxes) 
+
+
+def map_yolo_to_xml_labels(yolo_boxes, xml_file):
+    """
+    YOLO 탐지 결과와 XML 파일의 GT 박스를 비교하여 IOU가 가장 높은 것을 매핑
+    
+    Args:
+        yolo_boxes: YOLO 탐지 결과 [x1, y1, x2, y2]
+        xml_file: XML 파일 경로
+    
+    Returns:
+        Dict[int, str]: YOLO 탐지 인덱스 → XML 객체 이름 매핑
+    """
+    xml_boxes = get_bboxes_from_xml(xml_file)
+    yolo_label_mapping = {}
+    
+    for yolo_idx, yolo_box in enumerate(yolo_boxes):
+        max_iou = 0
+        best_xml_name = None
+        
+        for xml_box in xml_boxes:
+            x1, y1, x2, y2 = xml_box[1:]
+            xml_name = xml_box[0]
+            
+            iou_value = calculate_iou(yolo_box, [x1, y1, x2, y2])
+            
+            if iou_value > max_iou:
+                max_iou = iou_value
+                best_xml_name = xml_name
+        
+        if max_iou >= 0.5 and best_xml_name is not None:
+            yolo_label_mapping[yolo_idx] = best_xml_name
+    
+    return yolo_label_mapping
+
+
+def match_detections_with_xml(box_mapping: Dict, xml_result: List , track_boxes : List) -> Dict:
+    """ 
+    YOLO 탐지 순서와 XML ID 간의 매핑을 분석
+    
+    Args:
+    - box_mapping: YOLO 탐지 순서와 : [track_id , x1,y1,x2,y2,conf]
+    - xml_result: XML에서 추출한 박스 정보 [xml_id, x1,y1,x2,y2]
+    
+    Returns:
+    - 매핑 결과 딕셔너리
+      {
+        'yolo_to_tracking': {yolo_idx: tracking_id},
+        'yolo_to_xml': {yolo_idx: xml_id},
+        'tracking_to_xml': {tracking_id: xml_id}
+      }
+    """
+    # XML ID 추출 (name에서 숫자 추출)
+    xml_id_mapping = {}
+    for idx, (name, xmin, ymin, xmax, ymax) in enumerate(xml_result):
+        try:
+            xml_id = int(''.join(filter(str.isdigit, name)))
+            xml_id_mapping[idx] = xml_id
+        except:
+            # ID를 추출할 수 없는 경우 스킵
+            pass
+    
+    # IoU를 사용하여 YOLO 박스와 XML 박스 매핑
+    yolo_to_xml = {}
+    for yolo_idx, (track_info) in box_mapping.items():
+        tracking_id, x1, y1, x2, y2, conf = track_info
+        yolo_box = [x1, y1, x2, y2]
+        
+        best_iou = 0
+        best_xml_idx = None
+        for xml_idx, (name, xmin, ymin, xmax, ymax) in enumerate(xml_result):
+            xml_box = [xmin, ymin, xmax, ymax]
+            iou = calculate_iou(yolo_box, xml_box)
+            
+            if iou > best_iou:
+                best_iou = iou
+                best_xml_idx = xml_idx
+
+        if best_iou >= 0.7: # 해당코드가 문제가 발생할수도있음 만약에 XML박스와 yolo박스가 임계치가 만족하지않는다면
+            yolo_to_xml[yolo_idx] = best_xml_idx
+    
+    # 최종 매핑 결과 생성
+    """
+    YOLO_IDX 탐지순서 : 부여받은 Tracking_ID (가변)
+    YOLO_IDX : XML_IDX (불변)
+    Tracking_ID : XML_ID  
+    
+    """
+    mapping_result = {
+        'yolo_to_tracking': {k: v[0] for k, v in box_mapping.items()}, # yolo_IDX  : tracking_ID
+        'yolo_to_xml': yolo_to_xml, # yolo_IDX : XML_IDX
+        'tracking_to_xml': {} # tracking ID : XML_ID 
+    }
+    
+    # tracking_to_xml 매핑 추가
+    for yolo_idx, tracking_id in mapping_result['yolo_to_tracking'].items():
+        if yolo_idx in mapping_result['yolo_to_xml']:
+            xml_idx = mapping_result['yolo_to_xml'][yolo_idx]
+            if xml_idx in xml_id_mapping:
+                mapping_result['tracking_to_xml'][tracking_id] = xml_id_mapping[xml_idx]
+    
+    return mapping_result
+
