@@ -110,21 +110,6 @@ class Visualizer:
                           cv2.FONT_HERSHEY_DUPLEX, 0.7, (255, 255, 255), 2)
         return vis_img 
 
-    def generate_unique_color(self, label: str) -> Tuple[int, int, int]:
-        hash_value = hash(label)
-        
-        r = (hash_value & 0xFF0000) >> 16
-        g = (hash_value & 0x00FF00) >> 8
-        b = hash_value & 0x0000FF
-        
-        brightness = 0.299 * r + 0.587 * g + 0.114 * b
-        if brightness < 50:
-            r = min(r + 100, 255)
-            g = min(g + 100, 255)
-            b = min(b + 100, 255)
-        
-        return (int(r), int(g), int(b))
-    
     def visualize_tracker_xml_mapping(self, image: np.ndarray, tracker_results: np.ndarray, xml_results: np.ndarray, tracker_label_mapping: dict) -> np.ndarray:
         """
         Tracker 박스와 XML 박스의 매핑 관계를 시각화합니다.
@@ -444,7 +429,6 @@ def main():
 
         # 객체 트래킹 업데이트
         targets = tracker.update(dets, img_tensor, np_img, str(frame_id)) # 반환 형태: [[x1, y1, x2, y2, id, score], ...]
-        print('targets:', targets)
         # 트래커 필터링
         tlwhs, ids, confs = utils.filter_targets(targets,
                                                GeneralSettings['aspect_ratio_thresh'], # 박스의 너비 / 높이 비율이 최대허용값 이상이면 필터링
