@@ -2,7 +2,8 @@ import glob
 import os
 
 import numpy as np
-import shutil
+import xml.etree.ElementTree as ET
+from typing import Dict, List
 
 
 def write_results_no_score(filename, results):
@@ -113,3 +114,108 @@ def dti(txt_path, save_path, n_min=25, n_dti=20):
         seq_results = seq_results[1:]
         seq_results = seq_results[seq_results[:, 0].argsort()]
         dti_write_results(save_seq_txt, seq_results)
+
+
+def calculate_iou(boxA, boxB):
+    """
+    IoU(Intersection over Union) 계산
+    """
+    xA = max(boxA[0], boxB[0])
+    yA = max(boxA[1], boxB[1])
+    xB = min(boxA[2], boxB[2])
+    yB = min(boxA[3], boxB[3])
+
+    inter_area = max(0, xB - xA) * max(0, yB - yA)
+    boxA_area = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
+    boxB_area = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
+
+    return inter_area / (boxA_area + boxB_area - inter_area + 1e-10)
+
+def calculate_centroid(box):
+    """바운딩 박스 중심 좌표 계산"""
+    x1, y1, x2, y2 = box
+    return ((x1 + x2) / 2, (y1 + y2) / 2)
+
+
+def calculate_euclidean_distance(box1, box2):
+    """유클리드 거리 계산"""
+    c1 = calculate_centroid(box1)
+    c2 = calculate_centroid(box2)
+    return np.linalg.norm(np.array(c1) - np.array(c2))
+
+def get_bboxes_from_xml(xml_file):
+    """XML 파일에서 bounding box 정보 추출"""
+    tree = ET.parse(xml_file)
+    root = tree.getroot()
+    bboxes = []
+    
+    for obj in root.findall('.//object'):
+        name = obj.find('name').text
+        bbox = obj.find('bndbox')
+        if bbox is not None:
+            xmin = float(bbox.find('xmin').text)
+            ymin = float(bbox.find('ymin').text)
+            xmax = float(bbox.find('xmax').text)
+            ymax = float(bbox.find('ymax').text)
+            bboxes.append((name, xmin, ymin, xmax, ymax))
+    
+    return sorted(bboxes) 
+
+def match_tracker_to_gt(tracker_results, xml_file, iou_threshold=0.5, distance_threshold=100):
+    """
+    트래커 결과와 GT 데이터를 매칭 (IoU + 거리 기반 보완)
+
+    :param tracker_results: 트래커 결과 [[x1, y1, x2, y2, track_id, conf], ...]
+    :param xml_file: GT 데이터가 포함된 XML 파일 경로
+    :param iou_threshold: IoU 매칭 기준
+    :param distance_threshold: 거리 기반 보완 기준
+    :return: 트래커 ID → GT ID 매핑 딕셔너리
+    """
+    gt_boxes = get_bboxes_from_xml(xml_file)  # GT 박스 로드
+
+    # GT 데이터를 {GT_ID: [x1, y1, x2, y2]} 형태로 변환
+    gt_dict = {int(gt[0]): np.array(gt[1:]) for gt in gt_boxes}
+    
+    track_to_gt_mapping = {}  # 최종 매칭 결과
+    unmatched_tracks = list(tracker_results[:, 4].astype(int))  # 매칭되지 않은 트랙 ID 리스트
+    unmatched_gt = list(gt_dict.keys())  # 매칭되지 않은 GT ID 리스트
+
+    # 트랙 박스 {track_id → bbox} 변환
+    track_dict = {int(track[4]): np.array(track[:4]) for track in tracker_results}
+
+    for track_id, track_box in track_dict.items():
+        max_iou = 0  # IoU 기본값 0
+        best_gt_id = None
+
+        # IoU 계산
+        for gt_id in unmatched_gt:
+            iou_value = calculate_iou(track_box, gt_dict[gt_id])
+
+            if iou_value > max_iou:
+                max_iou = iou_value
+                best_gt_id = gt_id
+
+        # IoU가 임계값 이상이면 매칭
+        if max_iou >= iou_threshold:
+            track_to_gt_mapping[track_id] = best_gt_id
+            unmatched_gt.remove(best_gt_id)  # 매칭된 GT 제거
+            unmatched_tracks.remove(track_id)  # 매칭된 트랙 제거
+
+    # IoU로 매칭되지 않은 트랙 → 거리 기반으로 보완
+    for track_id in unmatched_tracks[:]:  # 리스트 복사 후 수정
+        track_box = track_dict[track_id]
+        min_distance = float('inf')
+        best_gt_id = None
+
+        for gt_id in unmatched_gt:
+            distance = calculate_euclidean_distance(track_box, gt_dict[gt_id])
+
+            if distance < min_distance and distance < distance_threshold:
+                min_distance = distance
+                best_gt_id = gt_id
+
+        if best_gt_id is not None:
+            track_to_gt_mapping[track_id] = best_gt_id
+            unmatched_gt.remove(best_gt_id)  # 매칭된 GT 제거
+            unmatched_tracks.remove(track_id)  # 매칭된 트랙 제거
+    return track_to_gt_mapping

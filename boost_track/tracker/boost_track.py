@@ -198,7 +198,6 @@ class BoostTrack(object):
                 
         """
         
-        orgin_dets = dets.copy()
         if dets is None:
             return np.empty((0, 5))
         
@@ -217,8 +216,6 @@ class BoostTrack(object):
             for trk in self.trackers:
                 trk.camera_update(transform)
 
-        
-                
         # 비활성 트래커 관리
         current_inactive = []
         for trk in self.trackers:
@@ -238,21 +235,18 @@ class BoostTrack(object):
             confs[t] = self.trackers[t].get_confidence()
             trks[t] = [pos[0], pos[1], pos[2], pos[3], confs[t, 0]]
 
+        # DLO boost 사용 여부
         if self.use_dlo_boost:
             dets = self.dlo_confidence_boost(dets, self.use_rich_s, self.use_sb, self.use_vt)
 
+        # Duo boost 사용 여부
         if self.use_duo_boost:
             dets = self.duo_confidence_boost(dets)
 
-        remain_inds = dets[:, 4] >= self.det_thresh # dets shape: [N, 5] 객체된객체수 , 객체수마다 가지고있는 x1,y1,x2,y2,score   
-
-        print('====================')
-        print("det thresh",self.det_thresh)
-        print('orgin_dets',orgin_dets)
-        print('remain_inds',remain_inds)
-        print('====================')
+        # 임계치 이상의 객체 추출
+        remain_inds = dets[:, 4] >= self.det_thresh
         
-        dets = dets[remain_inds] # 새로운 ID를 부여받지도 않고, 트래킹 대상으로도 고려되지 않습니다. 임계치미만의 객체들은
+        dets = dets[remain_inds] 
         scores = dets[:, 4] # 신뢰도추출 > 임계치 
 
 
@@ -276,32 +270,37 @@ class BoostTrack(object):
             
     
         emb_cost = None if self.embedder is None else emb_cost  # 임베딩 계산기가 없으면 None 반환
-
         iou_matrix = iou_batch(dets, trks[:, :4])
         mh_matrix = self.get_mh_dist_matrix(dets)
-        cost_matrix = (self.lambda_iou * iou_matrix + self.lambda_mhd * mh_matrix + self.lambda_shape * shape_similarity(dets, trks)) / (self.lambda_iou + self.lambda_mhd + self.lambda_shape)
-        
-        # 객체 탐지와 트래커 매칭 수행
-        print("assoc입력전 ",dets)
+    
+        """
+        Returns:
+            matched: 매칭된 detection-tracker 쌍의 인덱스
+            unmatched_dets: 매칭되지 않은 detection 인덱스
+            unmatched_trks: 매칭되지 않은 tracker 인덱스
+            sym_matrix: 최종 비용 행렬
+        """
+        # 객체 탐지 결과와 트래커 결과 매칭 수행
         matched, unmatched_dets, unmatched_trks, sym_matrix = associate(
             dets,
             trks,
             self.iou_threshold,           
-            mahalanobis_distance=self.get_mh_dist_matrix(dets),
-            track_confidence=confs,
-            detection_confidence=scores,
+            mahalanobis_distance=mh_matrix,
+            track_confidence=confs, # 트래커 신뢰도
+            detection_confidence=scores, # 탐지 신뢰도
             emb_cost=emb_cost,
             emb_sim_score=self.emb_sim_score,
             lambda_iou=self.lambda_iou,
             lambda_mhd=self.lambda_mhd,
             lambda_shape=self.lambda_shape
         )
+
+        # print("sym_matrix ",sym_matrix)
         
-        
-        print(f"\n{'='*50}")
-        print(f"프레임 {self.frame_count}")
-        print(f"현재 트래커 ID: {[t.id for t in self.trackers]}")
-        print(f"비활성 트래커 ID: {[t.id for t in self.inactive_trackers]}\n")
+        # print(f"\n{'='*50}")
+        # print(f"프레임 {self.frame_count}")
+        # print(f"현재 트래커 ID: {[t.id for t in self.trackers]}")
+        # print(f"비활성 트래커 ID: {[t.id for t in self.inactive_trackers]}\n")
         
         trust = (dets[:, 4] - self.det_thresh) / (1 - self.det_thresh)
         af = 0.95
@@ -316,11 +315,9 @@ class BoostTrack(object):
 
         for i in unmatched_dets: # re-id가 안된 새로운 id는 tracking추가
             if dets[i, 4] >= self.det_thresh:
-                self.trackers.append(KalmanBoxTracker(dets[i, :], emb=dets_embs[i] , yolo_conf = dets[i, 4]))
-                
+                self.trackers.append(KalmanBoxTracker(dets[i, :], emb=dets_embs[i] , yolo_conf = dets[i, 4]))  
         # Update tracker states and remove dead trackers
         i = len(self.trackers)
-        print("시각화전 dets갯수" , i)
         for trk in reversed(self.trackers):
             if trk.time_since_update > self.max_age:
                 self.trackers.pop(i-1)
@@ -374,7 +371,7 @@ class BoostTrack(object):
         n_dims = 4
         limit = 13.2767
         mahalanobis_distance = self.get_mh_dist_matrix(detections, n_dims)
-
+        
         if mahalanobis_distance.size > 0 and self.frame_count > 1:
             min_mh_dists = mahalanobis_distance.min(1)
 
@@ -412,7 +409,7 @@ class BoostTrack(object):
         for t, trk in enumerate(trackers):
             pos = self.trackers[t].get_state()[0]
             trk[:] = [pos[0], pos[1], pos[2], pos[3], 0, self.trackers[t].time_since_update - 1]
-
+        
         if use_rich_sim:
             mhd_sim = MhDist_similarity(self.get_mh_dist_matrix(detections), 1)
             shape_sim = shape_similarity(detections, trackers)

@@ -116,11 +116,13 @@ def soft_biou_batch(bboxes1, bboxes2):
 def match(cost_matrix: np.ndarray, threshold: float) -> np.ndarray:
     if cost_matrix.size > 0:
         a = (cost_matrix > threshold).astype(np.int32)
+        # 탐지-트랙 매칭 결과가 1개인 경우
         if a.sum(1).max() == 1 and a.sum(0).max() == 1:
             matched_indices = np.stack(np.where(a), axis=1)
+        # 중복된 매칭 후보가 있는 경우
         else:
             cost_matrix = -cost_matrix  # maximize로 변경
-            row_ind, col_ind = linear_sum_assignment(cost_matrix)
+            row_ind, col_ind = linear_sum_assignment(cost_matrix) # 헝가리 알고리즘 적용
             matched_indices = np.array([[row_ind[i], col_ind[i]] for i in range(len(row_ind))])
     else:
         matched_indices = np.empty(shape=(0, 2))
@@ -130,13 +132,16 @@ def match(cost_matrix: np.ndarray, threshold: float) -> np.ndarray:
 def linear_assignment(detections: np.ndarray, trackers: np.ndarray,
                       iou_matrix: np.ndarray, cost_matrix: np.ndarray,
                       threshold: float, emb_cost: Optional[np.ndarray] = None, emb_sim_score: float = 0.75):
+    
     if iou_matrix is None and cost_matrix is None:
         raise Exception("Both iou_matrix and cost_matrix are None!")
     if iou_matrix is None:
         iou_matrix = deepcopy(cost_matrix)
     if cost_matrix is None:
         cost_matrix = deepcopy(iou_matrix)
+        
     matched_indices = match(cost_matrix, threshold)
+    
     unmatched_detections = []
     for d, det in enumerate(detections):
         if d not in matched_indices[:, 0]:
@@ -149,14 +154,7 @@ def linear_assignment(detections: np.ndarray, trackers: np.ndarray,
     # filter out matched with low IOU
     matches = []
     for m in matched_indices:
-        # IOU가 threshold 이상이거나, IOU가 threshold/2 이상이고 임베딩 유사도가 emb_sim_score 이상인 경우
-        # valid_match = (
-        #     iou_matrix[m[0], m[1]] >= threshold or 
-        #     (False if emb_cost is None else 
-        #      (iou_matrix[m[0], m[1]] >= threshold / 2 and 
-        #       emb_cost[m[0], m[1]] >= emb_sim_score)) 
-        # )
-        valid_match = emb_cost[m[0], m[1]]> emb_sim_score
+        valid_match = emb_cost[m[0], m[1]] > emb_sim_score
         if valid_match:
             matches.append(m.reshape(1, 2))
         else:
@@ -189,7 +187,6 @@ def associate(
         print("emb_sim_score : {} lambda_iou : {} lambda_mhd : {} lambda_shape : {}".format(emb_sim_score, lambda_iou, lambda_mhd, lambda_shape))
         raise Exception("emb_sim_score, lambda_iou, lambda_mhd, lambda_shape must be specified!")
     
-
     if len(trackers) == 0:
         return (
             np.empty((0, 2), dtype=int),
@@ -197,28 +194,34 @@ def associate(
             np.empty((0, 5), dtype=int),
             np.empty((0, 0))
         )
+    
+    # 1. IoU 행렬 계산
     iou_matrix = iou_batch(detections, trackers)
-
     cost_matrix = deepcopy(iou_matrix)
 
+    # 2. 탐지-트랙 신뢰도 결합 (Detection-Tracklet Confidence)
     if detection_confidence is not None and track_confidence is not None:
         conf = np.multiply(detection_confidence.reshape((-1, 1)), track_confidence.reshape((1, -1)))
         conf[iou_matrix < iou_threshold] = 0
-
-        cost_matrix += lambda_iou * conf * iou_batch(detections, trackers)
+        iou_for_cost = iou_batch(detections, trackers)
+        cost_matrix += lambda_iou * conf * iou_for_cost
     else:
         warnings.warn("Detections or tracklet confidence is None and detection-tracklet confidence cannot be computed!")
         conf = None
 
+    # 3. Mahalanobis 거리 기반 유사도 계산
     if mahalanobis_distance is not None and mahalanobis_distance.size > 0:
         mahalanobis_distance = MhDist_similarity(mahalanobis_distance)
-
         cost_matrix += lambda_mhd * mahalanobis_distance
+        # 4. Shape 유사도 계산 (신뢰도 반영)
         if conf is not None:
-            cost_matrix += lambda_shape * conf * shape_similarity(detections, trackers)
+            s = shape_similarity(detections, trackers)
+            cost_matrix += lambda_shape * conf * s
 
+    # 5. 임베딩 유사도 계산
     if emb_cost is not None:
-        lambda_emb = (1+lambda_iou+lambda_shape+lambda_mhd) * 1.5
+        lambda_emb = (1 + lambda_iou + lambda_shape + lambda_mhd) * 1.5
         cost_matrix += lambda_emb * emb_cost
 
+    # 최종 매칭 수행
     return linear_assignment(detections, trackers, iou_matrix, cost_matrix, iou_threshold, emb_cost, emb_sim_score)
