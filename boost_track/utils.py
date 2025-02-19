@@ -160,6 +160,7 @@ def get_bboxes_from_xml(xml_file):
             bboxes.append((name, xmin, ymin, xmax, ymax))
     
     return sorted(bboxes) 
+
 def match_tracker_to_gt(tracker_results, xml_file, iou_threshold=0.5, distance_threshold=100):
     """
     트래커 결과와 GT 데이터를 매칭 (IoU + 거리 기반 보완)
@@ -217,5 +218,4 @@ def match_tracker_to_gt(tracker_results, xml_file, iou_threshold=0.5, distance_t
             track_to_gt_mapping[track_id] = best_gt_id
             unmatched_gt.remove(best_gt_id)  # 매칭된 GT 제거
             unmatched_tracks.remove(track_id)  # 매칭된 트랙 제거
-    print(track_to_gt_mapping)
     return track_to_gt_mapping

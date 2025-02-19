@@ -12,11 +12,10 @@ from natsort import natsorted
 from default_settings import GeneralSettings, BoostTrackConfig
 from tracker.boost_track import BoostTrack
 import utils
-from id_switch_analyzer2 import IDSwitchAnalyzer
 from typing import Dict, List, Tuple , Optional
 import random
 from collections import deque
-from evaluate import compute_mot_metrics
+from evaluate import compute_mot_metrics, get_final_mot_metrics
 
 @dataclass
 class VisualizationConfig:
@@ -353,9 +352,9 @@ def main():
     
     # 시각화 모델 설정
     visualizer = Visualizer()
-    
-    # ID 스위치 분석 모델 설정
-    id_switch_analyzer = IDSwitchAnalyzer()  
+
+    # 평가지표 결과 저장
+    all_metrics = [] # 모든 프레임의 MOTA, MOTP, IDF1 결과 저장
     
     # 시각화 설정
     vis_config = VisualizationConfig(
@@ -382,8 +381,6 @@ def main():
         else:
             not_found_list.append(img_file)
             
-
-
 
     # 이전 프레임 이미지 저장 덱
     previous_track_images = deque(maxlen=5)
@@ -455,7 +452,7 @@ def main():
                         matched_id = track_id
                         
                 if matched_id is not None:
-                    frame_mapping[det_idx] = matched_id # Yolo_INDEX : Track_ID Yolo탐지순서가 어떤 트랙ID를 부여받았는지?
+                    frame_mapping[det_idx] = matched_id 
 
             yolo_tracking_id, box_mapping = visualizer.draw_detection_boxes(np_img, dets, frame_mapping)    #{yolo idx : [track_id , x1,y1,x2,y2,conf]}
         track_img, track_id_list = visualizer.draw_tracking_results(np_img, tlwhs, ids)
@@ -463,15 +460,16 @@ def main():
         # xml 레이블값들의 정보를 가져오고 시각화하는 함수임 레이블링 확인 코드
         xml_result = utils.get_bboxes_from_xml(xml_path) #  [xml_id , x1,y1,x2,y2 ] 
         xml_vis = visualizer.draw_xml_boxes(np_img, xml_result , idx) 
+
+        '''''''''''''''''''''''''''''''''''''''''''''
+        # MOT 계산
+        '''''''''''''''''''''''''''''''''''''''''''''
         
         # YOLO 객체 탐지와 XML 박스를 매핑
         matched_results = utils.match_tracker_to_gt(targets, xml_path)
-        
-        mota, motp, idf1, fp, fn, idsw = compute_mot_metrics(targets, xml_result, frame_id, matched_results)
-        
-        # 결과 출력
-        print(f"Frame {frame_id} - MOTA: {mota:.3f}, MOTP: {motp:.3f}, IDF1: {idf1:.3f}")
-        print(f"False Positives: {fp}, False Negatives: {fn}, ID Switches: {idsw}")
+        frame_metrics = compute_mot_metrics(targets, xml_result, frame_id, matched_results)
+        all_metrics.append(frame_metrics)
+
 
         cv2.putText(track_img, f"Frame: {frame_id}", (10, 30),
                           cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 255, 0), 2)
@@ -513,7 +511,16 @@ def main():
         if video_writer is not None:
             video_writer.write(track_img)
         
- 
+    
+    final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw = get_final_mot_metrics(all_metrics)
+
+    print(f"Final MOTA: {final_mota:.4f}")
+    print(f"Final HOTA: {final_hota:.4f}")
+    print(f"Final IDF1: {final_idf1:.4f}")
+    print(f"Total False Positives: {total_fp}")
+    print(f"Total False Negatives: {total_fn}")
+    print(f"Total ID Switches: {total_idsw}")
+    
     # Cleanup
     if video_writer is not None:
         video_writer.release()
