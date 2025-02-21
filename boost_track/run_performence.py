@@ -30,14 +30,14 @@ class ModelConfig:
         'swinv2': 'Micrsorft_swinv2_large_patch4_window12_192_22k.pth',
         'convNext': 'convnext_xlarge_22k_1k_384_ema.pth',
         'La_Transformer': 'LaTransformer.pth',
-        'VIT-B/16+ICS_SSL': 'vit_base_ics_cfs_lup.pth',
+        'VIT': 'vit_base_ics_cfs_lup.pth',
         'dinov2': 'dinov2_vitb14_pretrain.pth'
     }
 
     @staticmethod
     def get_model_name(reid_model: str) -> str:
         model_name = os.path.splitext(reid_model)[0]
-        return 'VIT_SSL_BASE' if model_name == 'VIT-B/16+ICS_SSL' else model_name
+        return model_name
 
 class Visualizer:
     def __init__(self):
@@ -332,8 +332,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--yolo_model", type=str, default="external/weights/yolo11x.pt")
     parser.add_argument("--img_path", type=str, default="data/cam2_labeld_add_rect")
     parser.add_argument("--model_name", type=str,
-                       choices=['convNext', 'dinov2', 'swinv2', 'CLIP', 'CLIP_RGB',
-                               'La_Transformer', 'CTL', 'VIT-B/16+ICS_SSL', 'VIT_SSL_MARKET'],
+                       choices=['convNext', 'dinov2', 'swinv2',
+                               'La_Transformer', 'VIT'],
                        default='dinov2')
     parser.add_argument("--reid_model", type=str, default=None)
     parser.add_argument('--emb_method', type=str, default='default',

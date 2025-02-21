@@ -41,7 +41,7 @@ class ModelFactory:
             'dinov2': Dinov2ModelCreator(),
             'swinv2': SwinV2ModelCreator(),
             'La_Transformer': LATransformerModelCreator(),
-            'VIT-B/16+ICS_SSL': VITSSLModelCreator(),
+            'VIT': VITSSLModelCreator(),
             'convNext': ConvNextModelCreator(),
         }
         
@@ -118,7 +118,7 @@ class VITSSLModelCreator(BaseModelCreator):
             stem_conv=True,
             num_classes=0
         )
-        model.load_state_dict(torch.load(config.reid_model_path), weights_only=True, strict=False)
+        model.load_state_dict(torch.load(config.reid_model_path), strict=False)
         model.to(device)
         return model
 
@@ -163,7 +163,7 @@ class ModelConfigFactory:
             'dinov2': ModelConfig(crop_size=(448, 448), model_type='dinov2'),
             'swinv2': ModelConfig(crop_size=(192, 192), model_type='swinv2'),
             'La_Transformer': ModelConfig(crop_size=(224, 224), model_type='La_Transformer'),
-            'VIT-B/16+ICS_SSL': ModelConfig(crop_size=(256, 128), model_type='VIT-B/16+ICS_SSL'),
+            'VIT': ModelConfig(crop_size=(256, 128), model_type='VIT'),
             'convNext': ModelConfig(crop_size=(384, 384), model_type='convNext'),
         }
         
@@ -222,7 +222,7 @@ class EmbeddingComputer:
             "dinov2": ([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
             "swinv2": ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
             "La_Transformer": ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-            "VIT-B/16+ICS_SSL": ([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
+            "VIT": ([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
             "convNext": ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
         }
 
