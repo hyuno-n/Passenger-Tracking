@@ -41,17 +41,15 @@ class ModelFactory:
     def create_model(config, device):
         model_creators = {
             'dinov2': Dinov2ModelCreator(),
-            'CLIP': CLIPModelCreator(),
-            'CLIP_RGB': CLIPRGBModelCreator(),
             'swinv2': SwinV2ModelCreator(),
             'La_Transformer': LATransformerModelCreator(),
             'VIT-B/16+ICS_SSL': VITSSLModelCreator(),
             'convNext': ConvNextModelCreator(),
         }
         
-        creator = model_creators.get(config.model_name)
+        creator = model_creators.get(config.model_type)
         if not creator:
-            raise ValueError(f"Unsupported model type: {config.model_name}")
+            raise ValueError(f"Unsupported model type: {config.model_type}")
         
         return creator.create_model(config, device)
 
@@ -65,78 +63,6 @@ class Dinov2ModelCreator(BaseModelCreator):
         model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitg14')
         model.to(device)
         model.eval()
-        return model
-
-class CLIPModelCreator(BaseModelCreator):
-    def create_model(self, config, device):
-        embed_dim = 512
-        image_resolution = 224
-        vision_layers = 12
-        vision_width = 768
-        vision_patch_size = 16
-        vision_stride_size = 16
-        context_length = 77
-        vocab_size = 49408
-        transformer_width = 512
-        transformer_heads = 8
-        transformer_layers = 12
-        h_resolution = 14
-        w_resolution = 14
-        
-        from tracker.CLIP.model.clip.model import CLIP
-        model = CLIP(
-            embed_dim=embed_dim,
-            image_resolution=image_resolution,
-            vision_layers=vision_layers,
-            vision_width=vision_width,
-            vision_patch_size=vision_patch_size,
-            vision_stride_size=vision_stride_size,
-            context_length=context_length,
-            vocab_size=vocab_size,
-            transformer_width=transformer_width,
-            transformer_heads=transformer_heads,
-            transformer_layers=transformer_layers,
-            h_resolution=h_resolution,
-            w_resolution=w_resolution
-        )
-        model.load_state_dict(torch.load(config.reid_model_path), strict=False)
-        model.to(device)
-        return model
-
-class CLIPRGBModelCreator(BaseModelCreator):
-    def create_model(self, config, device):
-        embed_dim = 768
-        image_resolution = 224
-        h_resolution = 14
-        w_resolution = 14
-        vision_layers = 12
-        vision_width = 768
-        vision_patch_size = 16
-        vision_stride_size = 16
-        context_length = 77
-        vocab_size = 49408
-        transformer_width = 512
-        transformer_heads = 8
-        transformer_layers = 12
-        
-        from tracker.CLIP.model.clip.model import RGBEncodedCLIP
-        model = RGBEncodedCLIP(
-            embed_dim=embed_dim,
-            image_resolution=image_resolution,
-            h_resolution=h_resolution,
-            w_resolution=w_resolution,
-            vision_layers=vision_layers,
-            vision_width=vision_width,
-            vision_patch_size=vision_patch_size,
-            vision_stride_size=vision_stride_size,
-            context_length=context_length,
-            vocab_size=vocab_size,
-            transformer_width=transformer_width,
-            transformer_heads=transformer_heads,
-            transformer_layers=transformer_layers,
-        )
-        model.load_state_dict(torch.load(config.reid_model_path), strict=False)
-        model.to(device)
         return model
 
 class SwinV2ModelCreator(BaseModelCreator):
@@ -194,7 +120,7 @@ class VITSSLModelCreator(BaseModelCreator):
             stem_conv=True,
             num_classes=0
         )
-        model.load_state_dict(torch.load(config.reid_model_path), strict=False)
+        model.load_state_dict(torch.load(config.reid_model_path), weights_only=True, strict=False)
         model.to(device)
         return model
 
@@ -237,13 +163,9 @@ class ModelConfigFactory:
     def create_config(model_name: str) -> ModelConfig:
         configs = {
             'dinov2': ModelConfig(crop_size=(448, 448), model_type='dinov2'),
-            'CLIP': ModelConfig(crop_size=(224, 224), model_type='CLIP'),
-            'CLIP_RGB': ModelConfig(crop_size=(224, 224), model_type='CLIP_RGB'),
             'swinv2': ModelConfig(crop_size=(192, 192), model_type='swinv2'),
             'La_Transformer': ModelConfig(crop_size=(224, 224), model_type='La_Transformer'),
-            'CTL': ModelConfig(crop_size=(224, 224), model_type='CTL'),
             'VIT-B/16+ICS_SSL': ModelConfig(crop_size=(256, 128), model_type='VIT-B/16+ICS_SSL'),
-            'VIT_SSL_MARKET': ModelConfig(crop_size=(384, 128), model_type='VIT_SSL_MARKET'),
             'convNext': ModelConfig(crop_size=(384, 384), model_type='convNext'),
         }
         
@@ -257,46 +179,6 @@ class BatchEmbeddingProcessor:
     """배치 임베딩 처리를 위한 기본 클래스"""
     def process_batch(self, batch_input, model, batch_image=None):
         raise NotImplementedError
-
-class CLIPRGBProcessor(BatchEmbeddingProcessor):
-    def __init__(self):
-        self.device = torch.device('cuda')
-        
-    def preprocess_with_rgb_stats(self, batch_img, transform):
-        """
-        RGB 통계를 사용하여 이미지 배치를 전처리합니다.
-        Args:
-            batch_img: 전처리할 이미지 배치
-            transform: 이미지 변환을 위한 transform 함수
-        Returns:
-            tuple: (전처리된 이미지 텐서, RGB 통계 텐서)
-        """
-        processed_batch = []
-        for img in batch_img:
-            processed = transform(img)
-            processed_batch.append(processed)
-        
-        batch_tensor = torch.stack(processed_batch).to(self.device)
-        
-        # RGB 통계 계산 (mean과 std 각각 3차원)
-        rgb_mean = torch.tensor([[0.5, 0.4, 0.3]]).to(self.device)  # RGB 평균값
-        rgb_std = torch.tensor([[0.2, 0.2, 0.2]]).to(self.device)   # RGB 표준편차
-        rgb_stats = torch.cat([rgb_mean, rgb_std], dim=1)      # [1, 6] 형태로 결합
-        
-        # 배치 크기만큼 RGB 통계 복제
-        rgb_stats_batch = rgb_stats.repeat(len(batch_img), 1)
-        
-        return batch_tensor, rgb_stats_batch
-        
-    def process_batch(self, batch_input, model, batch_image=None):
-        batch_input, rgb_stats_batch = self.preprocess_with_rgb_stats(batch_image, model.transform)
-        return model(batch_input, rgb_stats_batch)
-
-class CLIPProcessor(BatchEmbeddingProcessor):
-    def process_batch(self, batch_input, model, batch_image=None):
-        image_features = model.encode_image(batch_input)
-        batch_embeddings = image_features[-1]
-        return batch_embeddings[-1][0:]
 
 class LaTransformerProcessor(BatchEmbeddingProcessor):
     def process_batch(self, batch_input, model, batch_image):
@@ -323,14 +205,11 @@ class BatchProcessorFactory:
     @staticmethod
     def create_processor(model_type: str) -> BatchEmbeddingProcessor:
         processors = {
-            'CLIP_RGB': CLIPRGBProcessor(),
-            'CLIP': CLIPProcessor(),
             'La_Transformer': LaTransformerProcessor(),
             'CTL': CTLProcessor(),
             'swinv2': DefaultProcessor(),
             'convNext': DefaultProcessor(),
             'VIT-B/16+ICS_SSL': DefaultProcessor(),
-            'VIT_SSL_MARKET': DefaultProcessor(),
         }
         return processors.get(model_type, DefaultProcessor())
 
