@@ -1,0 +1,9 @@
+{
+    "Model": "dinov2",
+    "MOTA": 0.7310302282541641,
+    "HOTA": 0.8623547738193941,
+    "IDF1": 0.8556765378521397,
+    "False Positives": 262,
+    "False Negatives": 1791,
+    "ID Switches": 127
+}

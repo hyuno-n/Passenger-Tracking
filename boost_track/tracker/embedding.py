@@ -45,9 +45,7 @@ class ModelFactory:
             'CLIP_RGB': CLIPRGBModelCreator(),
             'swinv2': SwinV2ModelCreator(),
             'La_Transformer': LATransformerModelCreator(),
-            'CTL': CTLModelCreator(),
             'VIT-B/16+ICS_SSL': VITSSLModelCreator(),
-            'VIT_SSL_MARKET': VITSSLMarketModelCreator(),
             'convNext': ConvNextModelCreator(),
         }
         
@@ -64,7 +62,7 @@ class BaseModelCreator:
 
 class Dinov2ModelCreator(BaseModelCreator):
     def create_model(self, config, device):
-        model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitg14_reg')
+        model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitg14')
         model.to(device)
         model.eval()
         return model
@@ -179,26 +177,7 @@ class LATransformerModelCreator(BaseModelCreator):
         model = LATransformer(base_model, lmbd=0.2)
         model.load_state_dict(torch.load(config.reid_model_path), strict=False)
         model.to(device)
-        return model
-
-class CTLModelCreator(BaseModelCreator):
-    def create_model(self, config, device):
-        import os
-        from tracker.centroids_reid.modelling.backbones.resnet_ibn_a import resnet50_ibn_a
-        model = resnet50_ibn_a(last_stride=1, pretrained=True)
-        model.avgpool = nn.Identity()
-        model.fc = nn.Identity()
-        if os.path.exists(config.reid_model_path):
-            try:
-                state_dict = torch.load(config.reid_model_path, map_location=device)
-                if isinstance(state_dict, dict) and 'state_dict' in state_dict:
-                    state_dict = state_dict['state_dict']
-                state_dict = {k: v for k, v in state_dict.items() if not k.startswith('fc.')}
-                model.load_state_dict(state_dict, strict=False)
-            except Exception as e:
-                print(f"Error loading weights: {e}")
-                print("Continuing with pretrained weights only...")
-        model.to(device)
+        model.eval()
         return model
 
 class VITSSLModelCreator(BaseModelCreator):
@@ -216,37 +195,6 @@ class VITSSLModelCreator(BaseModelCreator):
             num_classes=0
         )
         model.load_state_dict(torch.load(config.reid_model_path), strict=False)
-        model.to(device)
-        return model
-
-class VITSSLMarketModelCreator(BaseModelCreator):
-    def create_model(self, config, device):
-        checkpoint = torch.load(config.reid_model_path, map_location=device)
-        base = VIT_EXTEND(
-            img_size=(384, 128),
-            stride_size=16,
-            drop_path_rate=0.1,
-            camera=0,
-            view=0,
-            sie_xishu=0.0,
-            local_feature=False,
-            gem_pool=True,
-            stem_conv=True,
-            num_classes=0
-        )
-        class FullModel(torch.nn.Module):
-            def __init__(self, base):
-                super().__init__()
-                self.base = base
-            
-            def forward(self, x):
-                return self.base(x)
-            
-            def forward_features(self, x, cam_label=None, view_label=None):
-                return self.base.forward_features(x, cam_label, view_label)
-        
-        model = FullModel(base)
-        model.load_state_dict(checkpoint, strict=False)
         model.to(device)
         return model
 
@@ -305,7 +253,6 @@ class ModelConfigFactory:
         return configs[model_name]
 
 
-
 class BatchEmbeddingProcessor:
     """배치 임베딩 처리를 위한 기본 클래스"""
     def process_batch(self, batch_input, model, batch_image=None):
@@ -352,9 +299,15 @@ class CLIPProcessor(BatchEmbeddingProcessor):
         return batch_embeddings[-1][0:]
 
 class LaTransformerProcessor(BatchEmbeddingProcessor):
-    def process_batch(self, batch_input, model, batch_image=None):
+    def process_batch(self, batch_input, model, batch_image):
         batch_embeddings = model(batch_input)
-        return torch.mean(batch_embeddings, dim=1)
+        
+        # 모든 레이어의 출력 Concatenate
+        all_layers = torch.cat([v for v in batch_embeddings.values()], dim=-1)
+        
+        # 평균 계산
+        mean_embeddings = torch.mean(all_layers, dim=1)
+        return mean_embeddings
 
 class CTLProcessor(BatchEmbeddingProcessor):
     def process_batch(self, batch_input, model, batch_image=None):
