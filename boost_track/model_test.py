@@ -9,7 +9,7 @@ WEIGHTS = {
     'swinv2': f'{WEIGHTS_DIR}/Micrsorft_swinv2_large_patch4_window12_192_22k.pth',
     'convNext': f'{WEIGHTS_DIR}/convnext_xlarge_22k_1k_384_ema.pth',
     'La_Transformer': f'{WEIGHTS_DIR}/LaTransformer.pth',
-    'VIT-B/16+ICS_SSL': f'{WEIGHTS_DIR}/vit_base_ics_cfs_lup.pth',
+    'VIT': f'{WEIGHTS_DIR}/vit_base_ics_cfs_lup.pth',
     'dinov2': f'{WEIGHTS_DIR}/dinov2_vitb14_pretrain.pth'
 }
 
@@ -68,7 +68,7 @@ def test_model_preprocessing_and_output(model_type):
         print(f"[ERROR] 모델 실행 실패: {e}")
 
 # 테스트할 모델 목록
-model_list = ["dinov2", "swinv2", "VIT-B/16+ICS_SSL", "La_Transformer", "convNext"]
+model_list = ["dinov2", "swinv2", "VIT", "La_Transformer", "convNext"]
 
 # 모든 모델에 대해 테스트 실행
 for model_name in model_list:
