@@ -16,6 +16,7 @@ from typing import Dict, List, Tuple , Optional
 import random
 from collections import deque
 from evaluate import compute_mot_metrics, get_final_mot_metrics
+import json
 
 @dataclass
 class VisualizationConfig:
@@ -28,12 +29,9 @@ class ModelConfig:
     WEIGHTS = {
         'swinv2': 'Micrsorft_swinv2_large_patch4_window12_192_22k.pth',
         'convNext': 'convnext_xlarge_22k_1k_384_ema.pth',
-        'CLIP': 'CLIPReID_MSMT17_clipreid_12x12sie_ViT-B-16_60.pth',
-        'CLIP_RGB': 'CLIPReID_MSMT17_clipreid_12x12sie_ViT-B-16_60.pth',
         'La_Transformer': 'LaTransformer.pth',
-        'CTL': 'CTL.pth',
         'VIT-B/16+ICS_SSL': 'vit_base_ics_cfs_lup.pth',
-        'VIT_SSL_MARKET': 'VIT_SSL_MSMT17_L.pth'
+        'dinov2': 'dinov2_vitb14_pretrain.pth'
     }
 
     @staticmethod
@@ -186,6 +184,23 @@ class VideoWriter:
             self.writer.release()
             print(f"Video saved to: {self.video_path}")
 
+def save_metrics(model_name, final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw):
+    results = {
+        "Model": model_name,
+        "MOTA": final_mota,
+        "HOTA": final_hota,
+        "IDF1": final_idf1,
+        "False Positives": total_fp,
+        "False Negatives": total_fn,
+        "ID Switches": total_idsw
+    }
+    # 결과 저장
+    save_path = f"results/{model_name}_metrics.json"
+    os.makedirs('results', exist_ok=True)
+    with open(save_path, 'w') as f:
+        json.dump(results, f, indent=4)
+    print(f"[INFO] Saved metrics to {save_path}")
+
 def is_mostly_inside(inner, outer, area_ratio_threshold=0.9):
     """작은 박스의 90% 이상이 큰 박스 안에 있는지 확인"""
     # 교집합 영역 계산
@@ -290,12 +305,12 @@ def setup_tracker(args) -> BoostTrack:
         device='cuda',
         max_age=15,
         min_hits=0,
-        det_thresh=0.55, # 탐지 신뢰도 임계값
+        det_thresh=0.55,  # 탐지 신뢰도 임계값
         iou_threshold=0.65,
         emb_sim_score=0.60,
-        lambda_iou=0.05, # 탐지-트랙 iou 신뢰도 결합 가중치
-        lambda_mhd=0.05, # 마하라노비스 거리 유사도 가중치
-        lambda_shape=0.9, # 형태 유사도 가중치
+        lambda_iou=0.05,  # 탐지-트랙 iou 신뢰도 결합 가중치
+        lambda_mhd=0.05,  # 마하라노비스 거리 유사도 가중치
+        lambda_shape=0.9,  # 형태 유사도 가중치
         use_dlo_boost=True,
         use_duo_boost=True,
         dlo_boost_coef=0.75,
@@ -319,7 +334,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model_name", type=str,
                        choices=['convNext', 'dinov2', 'swinv2', 'CLIP', 'CLIP_RGB',
                                'La_Transformer', 'CTL', 'VIT-B/16+ICS_SSL', 'VIT_SSL_MARKET'],
-                       default='VIT-B/16+ICS_SSL')
+                       default='dinov2')
     parser.add_argument("--reid_model", type=str, default=None)
     parser.add_argument('--emb_method', type=str, default='default',
                        choices=['default', 'mean', 'enhanced_mean', 'enhanced_mean_V2'])
@@ -500,7 +515,7 @@ def main():
                 cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
                 cv2.imshow(window_name, prev_img_info['image'])
             
-            cv2.waitKey(0)
+            
             
             # 이전 tracking 이미지 창들만 닫기
             for window_name in prev_window_names:
@@ -521,6 +536,10 @@ def main():
     print(f"Total False Negatives: {total_fn}")
     print(f"Total ID Switches: {total_idsw}")
     
+
+    # 최종 결과 저장
+    save_metrics(args.model_name, final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw)
+
     # Cleanup
     if video_writer is not None:
         video_writer.release()
