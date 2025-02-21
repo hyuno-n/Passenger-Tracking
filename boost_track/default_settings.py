@@ -116,7 +116,6 @@ class BoostTrackConfig:
         if not os.path.exists(reid_model_path):
             raise Exception(f"Invalid reid_model_path: {reid_model_path}")
         self.reid_model_path = reid_model_path
-        
         self.device = device
         self.max_age = max_age
         self.min_hits = min_hits
