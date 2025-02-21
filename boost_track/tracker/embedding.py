@@ -18,8 +18,6 @@ from typing import List, Tuple, Optional
 import torch
 import torch.nn as nn
 
-#from tracker.CLIP.model.clip.model import RGBEncodedCLIP
-
 
 @dataclass
 class ModelConfig:
@@ -47,9 +45,9 @@ class ModelFactory:
             'convNext': ConvNextModelCreator(),
         }
         
-        creator = model_creators.get(config.model_type)
+        creator = model_creators.get(config.model_name)
         if not creator:
-            raise ValueError(f"Unsupported model type: {config.model_type}")
+            raise ValueError(f"Unsupported model type: {config.model_name}")
         
         return creator.create_model(config, device)
 
@@ -180,22 +178,6 @@ class BatchEmbeddingProcessor:
     def process_batch(self, batch_input, model, batch_image=None):
         raise NotImplementedError
 
-class LaTransformerProcessor(BatchEmbeddingProcessor):
-    def process_batch(self, batch_input, model, batch_image):
-        batch_embeddings = model(batch_input)
-        
-        # 모든 레이어의 출력 Concatenate
-        all_layers = torch.cat([v for v in batch_embeddings.values()], dim=-1)
-        
-        # 평균 계산
-        mean_embeddings = torch.mean(all_layers, dim=1)
-        return mean_embeddings
-
-class CTLProcessor(BatchEmbeddingProcessor):
-    def process_batch(self, batch_input, model, batch_image=None):
-        batch_embeddings = model(batch_input)
-        return torch.mean(batch_embeddings, dim=[2, 3])
-
 class DefaultProcessor(BatchEmbeddingProcessor):
     def process_batch(self, batch_input, model, batch_image=None):
         return model(batch_input)
@@ -205,8 +187,7 @@ class BatchProcessorFactory:
     @staticmethod
     def create_processor(model_type: str) -> BatchEmbeddingProcessor:
         processors = {
-            'La_Transformer': LaTransformerProcessor(),
-            'CTL': CTLProcessor(),
+            'La_Transformer': DefaultProcessor(),
             'swinv2': DefaultProcessor(),
             'convNext': DefaultProcessor(),
             'VIT-B/16+ICS_SSL': DefaultProcessor(),
@@ -214,95 +195,119 @@ class BatchProcessorFactory:
         return processors.get(model_type, DefaultProcessor())
 
 
-
 class EmbeddingComputer:
     def __init__(self, config):
         self.model = None
         self.config = config
-        self.model_type = config.model_name
-        
+        self.model_type = config.model_name  # 올바른 속성 사용
         self.model_config = ModelConfigFactory.create_config(config.model_name)
-        self.transform = self.model_config.get_transform()
-        
-        print("Model Input size : ", self.model_config.crop_size)
-            
+
+        # 모델별 전처리 설정
+        self.transform = self.get_transform(self.model_config.crop_size, config.model_name)
+
+        print("Model Input size:", self.model_config.crop_size)
+
         self.max_batch = 8
-        self.device = torch.device('cuda') 
+        self.device = torch.device("cuda")
         self.initialize_model()
-        
-        # 임베딩 계산 결과를 캐싱하기 위한 변수들
-        # cache_path: 임베딩 결과를 저장할 파일 경로 포맷 
-        # cache: 현재 메모리에 있는 임베딩 결과를 저장하는 딕셔너리
-        # cache_name: 현재 처리중인 비디오/이미지의 식별자
-        self.cache_path = "./cache/embeddings/{}_embedding.pkl"
+
         self.cache = {}
         self.cache_name = ""
-        
+
+    def get_transform(self, crop_size, model_type):
+        """
+        모델별로 최적화된 전처리를 적용하는 함수
+        """
+        normalize_params = {
+            "dinov2": ([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
+            "swinv2": ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            "La_Transformer": ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            "VIT-B/16+ICS_SSL": ([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
+            "convNext": ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        }
+
+        mean, std = normalize_params.get(model_type, ([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]))
+
+        return T.Compose([
+            T.ToPILImage(),
+            T.Resize(crop_size),
+            T.ToTensor(),
+            T.Normalize(mean=mean, std=std),
+        ])
+
     def compute_embedding(self, img, bbox, tag):
-        """이미지에서 검출된 객체의 임베딩을 계산합니다."""
+        """
+        이미지에서 객체의 임베딩을 계산하는 함수
+        """
         if self.model is None:
             raise RuntimeError("Model is not initialized.")
-            
+
         if len(bbox) == 0:
             return np.array([])
-            
-        # 캐시 확인
+
         if tag != self.cache_name:
             self.cache = {}
             self.cache_name = tag
-            
-        # 배치 처리를 위한 준비
+
         batch_size = min(self.max_batch, len(bbox))
         n_batches = math.ceil(len(bbox) / batch_size)
         batch_image = []
         embeddings = []
-        
+
         for i in range(n_batches):
             start_idx = i * batch_size
             end_idx = min((i + 1) * batch_size, len(bbox))
             batch_bbox = bbox[start_idx:end_idx]
-            
-            # 배치 내의 각 객체에 대한 임베딩 계산
+
             batch_tensors = []
             for box in batch_bbox:
                 x1, y1, x2, y2 = map(int, box)
                 box_key = f"{tag}_{x1}_{y1}_{x2}_{y2}"
-                
+
                 if box_key in self.cache:
                     embedding = self.cache[box_key]
-                    
                 else:
-                    # 이미지 크롭 및 전처리
                     cropped = img[y1:y2, x1:x2]
                     batch_image.append(cropped)
                     if cropped.size == 0:
                         continue
-                        
+
                     tensor = self.transform(cropped)
                     batch_tensors.append(tensor)
-                    
+
             if not batch_tensors:
                 continue
-                
-            # 배치 텐서 생성 및 GPU로 이동
-            batch_input = torch.stack(batch_tensors)
-            batch_input = batch_input.to(self.device, non_blocking=True)
-            
-            # 배치 프로세서를 사용하여 임베딩 계산
+
+            batch_input = torch.stack(batch_tensors).to(self.device, non_blocking=True)
             processor = BatchProcessorFactory.create_processor(self.model_type)
+
             with torch.no_grad():
                 batch_embeddings = processor.process_batch(batch_input, self.model, batch_image)
+                batch_embeddings = self.process_output(batch_embeddings)
                 batch_embeddings = F.normalize(batch_embeddings, p=2, dim=1)
                 batch_embeddings = batch_embeddings.cpu().numpy()
-            
+
             for j, box in enumerate(batch_bbox):
                 if j < len(batch_embeddings):
                     x1, y1, x2, y2 = map(int, box)
                     box_key = f"{tag}_{x1}_{y1}_{x2}_{y2}"
                     self.cache[box_key] = batch_embeddings[j]
                     embeddings.append(batch_embeddings[j])
-        
+
         return np.array(embeddings) if embeddings else np.array([])
+
+    def process_output(self, output):
+        """
+        모델별로 다른 출력 형태를 통합하는 후처리 함수
+        """
+        if isinstance(output, dict):
+            merged_output = torch.cat([v for v in output.values()], dim=-1)  # (batch_size, total_feature_dim)
+            return merged_output
+        elif isinstance(output, torch.Tensor):  # 일반적인 경우
+            return output
+
+        else:
+            raise TypeError(f"Unexpected output type from model: {type(output)}")
 
     def initialize_model(self):
         self.model = ModelFactory.create_model(self.config, self.device)
