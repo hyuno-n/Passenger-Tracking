@@ -104,13 +104,13 @@ class BoostTrackConfig:
                  use_vt: bool = True,
                  local_feature : bool = False,
                  feature_avg : bool = False,
-                 model_name : str = '',
+                 model_type : str = '',
                  emb_sim_score = 0.75,
                  ):
         
         self.emb_sim_score = emb_sim_score
         
-        self.model_name = model_name    
+        self.model_type = model_type    
         self.local_feature = local_feature
         
         if not os.path.exists(reid_model_path):
