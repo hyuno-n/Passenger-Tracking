@@ -17,7 +17,17 @@ from dataclasses import dataclass
 from typing import List, Tuple, Optional
 import torch
 import torch.nn as nn
+import argparse
+import matplotlib.pyplot as plt
 
+def convert_dict_to_namespace(config_dict):
+    """
+    dict를 argparse.Namespace로 변환하여 build() 함수와 호환되도록 함.
+    """
+    namespace = argparse.Namespace()
+    for key, value in config_dict.items():
+        setattr(namespace, key, value)
+    return namespace
 
 @dataclass
 class ModelConfig:
@@ -43,11 +53,12 @@ class ModelFactory:
             'La_Transformer': LATransformerModelCreator(),
             'VIT': VITSSLModelCreator(),
             'convNext': ConvNextModelCreator(),
+            'DETR': DETRModelCreator(),
         }
         
-        creator = model_creators.get(config.model_name)
+        creator = model_creators.get(config.model_type)
         if not creator:
-            raise ValueError(f"Unsupported model type: {config.model_name}")
+            raise ValueError(f"Unsupported model type: {config.model_type}")
         
         return creator.create_model(config, device)
 
@@ -155,6 +166,56 @@ class ConvNextModelCreator(BaseModelCreator):
         model.eval()
         return model
 
+class DETRModelCreator(BaseModelCreator):
+    def create_model(self, config, device):
+        from tracker.Deformable_DETR.models.deformable_detr import build
+        # 🔍 Deformable DETR 모델 설정
+        args = {
+            "hidden_dim": 256,               # 모델의 임베딩 차원
+            "nheads": 8,                     # Multi-head Attention 개수
+            "enc_layers": 6,                 # Transformer Encoder 레이어 개수
+            "dec_layers": 6,                 # Transformer Decoder 레이어 개수
+            "dim_feedforward": 1024,         # Feedforward layer 차원
+            "dropout": 0.1,                   # Dropout 비율
+            "num_feature_levels": 4,          # Feature Pyramid Level 개수
+            "num_queries": 300,               # Object Query 개수 (COCO의 경우 100 추천)
+            "aux_loss": True,                 # Auxiliary loss 사용 여부
+            "with_box_refine": False,         # Iterative bounding box refinement 사용 여부
+            "two_stage": False,               # Two-stage DETR 사용 여부
+            "dataset_file": "coco",           # 데이터셋 설정
+            "device": "cuda" if torch.cuda.is_available() else "cpu",  # 실행 장치 설정
+            "reid_model_path": "external/weights/r50_deformable_detr.pth",  # 모델 가중치 파일
+            "position_embedding": "sine",     # Positional Embedding 설정
+            "lr_backbone": 1e-5,              # Backbone의 학습률
+            "masks": False,                   # Mask Head 사용 여부
+            "backbone": "resnet50",           # Backbone 모델 설정
+            "dilation": False,                # Backbone Dilated Conv 사용 여부
+            "dec_n_points": 4,                # Deformable Attention의 sampling points 개수
+            "enc_n_points": 4,                # Deformable Attention의 sampling points 개수
+            "set_cost_class": 2,              # Set transformer의 class cost 가중치
+            "set_cost_bbox": 5,               # Set transformer의 bbox cost 가중치
+            "set_cost_giou": 2,               # Set transformer의 giou cost 가중치
+            "bbox_loss_coef": 5,              # Bounding box loss 가중치
+            "cls_loss_coef": 2,               # Class loss 가중치
+            "giou_loss_coef": 2,              # GIoU loss 가중치
+            "focal_alpha": 0.25,              # Focal loss의 alpha 값
+        }
+
+        detr_args = convert_dict_to_namespace(args)
+
+        # 모델 인스턴스 생성
+        model,_,_ = build(detr_args)
+        checkpoint = torch.load(config.reid_model_path, map_location=device)
+        if "model" in checkpoint:  # 일반적인 DETR 체크포인트 포맷
+            state_dict = checkpoint["model"]
+        else:
+            state_dict = checkpoint
+        
+        model.load_state_dict(state_dict, strict=False)
+        model.to(device)
+        model.eval()
+        return model
+
 class ModelConfigFactory:
     """Factory for creating model configurations"""
     @staticmethod
@@ -165,6 +226,7 @@ class ModelConfigFactory:
             'La_Transformer': ModelConfig(crop_size=(224, 224), model_type='La_Transformer'),
             'VIT': ModelConfig(crop_size=(256, 128), model_type='VIT'),
             'convNext': ModelConfig(crop_size=(384, 384), model_type='convNext'),
+            'DETR': ModelConfig(crop_size=(800, 800), model_type='DETR'),
         }
         
         if model_name not in configs:
@@ -190,7 +252,8 @@ class BatchProcessorFactory:
             'La_Transformer': DefaultProcessor(),
             'swinv2': DefaultProcessor(),
             'convNext': DefaultProcessor(),
-            'VIT-B/16+ICS_SSL': DefaultProcessor(),
+            'VIT': DefaultProcessor(),
+            'DETR': DefaultProcessor(),
         }
         return processors.get(model_type, DefaultProcessor())
 
@@ -199,11 +262,11 @@ class EmbeddingComputer:
     def __init__(self, config):
         self.model = None
         self.config = config
-        self.model_type = config.model_name  # 올바른 속성 사용
-        self.model_config = ModelConfigFactory.create_config(config.model_name)
+        self.model_type = config.model_type  # 올바른 속성 사용
+        self.model_config = ModelConfigFactory.create_config(config.model_type)
 
         # 모델별 전처리 설정
-        self.transform = self.get_transform(self.model_config.crop_size, config.model_name)
+        self.transform = self.get_transform(self.model_config.crop_size, config.model_type)
 
         print("Model Input size:", self.model_config.crop_size)
 
@@ -224,6 +287,7 @@ class EmbeddingComputer:
             "La_Transformer": ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
             "VIT": ([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
             "convNext": ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            "DETR": ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
         }
 
         mean, std = normalize_params.get(model_type, ([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]))
@@ -286,14 +350,20 @@ class EmbeddingComputer:
                 batch_embeddings = self.process_output(batch_embeddings)
                 batch_embeddings = F.normalize(batch_embeddings, p=2, dim=1)
                 batch_embeddings = batch_embeddings.cpu().numpy()
-
+            print(batch_bbox)
             for j, box in enumerate(batch_bbox):
                 if j < len(batch_embeddings):
                     x1, y1, x2, y2 = map(int, box)
                     box_key = f"{tag}_{x1}_{y1}_{x2}_{y2}"
                     self.cache[box_key] = batch_embeddings[j]
                     embeddings.append(batch_embeddings[j])
-
+                    # 박스를 시각화 (중복 실행 방지)
+                    cropped = img[y1:y2, x1:x2]
+                    cv2.namedWindow(f"Object {j+1}", cv2.WINDOW_NORMAL)
+                    cv2.imshow(f"Object {j+1}", cropped)
+            cv2.waitKey(0)  # 키 입력을 기다림
+            cv2.destroyAllWindows()  # 열린 모든 창을 닫음
+            print(batch_embeddings)
         return np.array(embeddings) if embeddings else np.array([])
 
     def process_output(self, output):

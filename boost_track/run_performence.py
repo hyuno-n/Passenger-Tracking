@@ -322,7 +322,7 @@ def setup_tracker(args) -> BoostTrack:
         use_cmc=False,
         local_feature=True,
         feature_avg=True,
-        model_name=args.model_name
+        model_type=args.model_type
     )
     return BoostTrack(config)
 
@@ -331,9 +331,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser("BoostTrack for image sequence")
     parser.add_argument("--yolo_model", type=str, default="external/weights/yolo11x.pt")
     parser.add_argument("--img_path", type=str, default="data/cam2_labeld_add_rect")
-    parser.add_argument("--model_name", type=str,
+    parser.add_argument("--model_type", type=str,
                        choices=['convNext', 'dinov2', 'swinv2',
-                               'La_Transformer', 'VIT'],
+                               'La_Transformer', 'VIT', 'DETR'],
                        default='dinov2')
     parser.add_argument("--reid_model", type=str, default=None)
     parser.add_argument('--emb_method', type=str, default='default',
@@ -344,7 +344,7 @@ def parse_args() -> argparse.Namespace:
     
     args = parser.parse_args()
     if args.reid_model is None:
-        args.reid_model = ModelConfig.WEIGHTS[args.model_name]
+        args.reid_model = ModelConfig.WEIGHTS[args.model_type]
         print(f"Using weights: {args.reid_model}")
     
     return args
@@ -381,10 +381,10 @@ def main():
     
     cam_name = args.img_path.split('/')[-1]
 
-    save_dir = f'{args.model_name}_{cam_name}_view'
-    model_name = ModelConfig.get_model_name(args.reid_model)
+    save_dir = f'{args.model_type}_{cam_name}_view'
+    model_type = ModelConfig.get_model_name(args.reid_model)
     
-    video_writer = VideoWriter(save_dir, model_name, args.emb_method, os.path.basename(args.img_path)) if args.save_video else None
+    video_writer = VideoWriter(save_dir, model_type, args.emb_method, os.path.basename(args.img_path)) if args.save_video else None
     
     valid_pairs = []
     for img_file in img_files:
@@ -525,6 +525,9 @@ def main():
         # Write video frame
         if video_writer is not None:
             video_writer.write(track_img)
+
+        if cv2.waitKey(0) & 0xFF == ord('q'):
+            break
         
     
     final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw = get_final_mot_metrics(all_metrics)
@@ -538,7 +541,7 @@ def main():
     
 
     # 최종 결과 저장
-    save_metrics(args.model_name, final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw)
+    save_metrics(args.model_type, final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw)
 
     # Cleanup
     if video_writer is not None:
