@@ -1,9 +1,0 @@
-{
-    "Model": "La_Transformer",
-    "MOTA": 0.738062924120913,
-    "HOTA": 0.8692460668643649,
-    "IDF1": 0.8628156346791928,
-    "False Positives": 272,
-    "False Negatives": 1755,
-    "ID Switches": 96
-}

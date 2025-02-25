@@ -10,7 +10,8 @@ WEIGHTS = {
     'convNext': f'{WEIGHTS_DIR}/convnext_xlarge_22k_1k_384_ema.pth',
     'La_Transformer': f'{WEIGHTS_DIR}/LaTransformer.pth',
     'VIT': f'{WEIGHTS_DIR}/vit_base_ics_cfs_lup.pth',
-    'dinov2': f'{WEIGHTS_DIR}/dinov2_vitb14_pretrain.pth'
+    'dinov2': f'{WEIGHTS_DIR}/dinov2_vitb14_pretrain.pth',
+    'DETR': f'{WEIGHTS_DIR}/r50_deformable_detr.pth',
 }
 
 def test_model_preprocessing_and_output(model_type):
@@ -58,7 +59,10 @@ def test_model_preprocessing_and_output(model_type):
         
         if isinstance(output, dict):
             for key, value in output.items():
-                print(f"🔍 출력 Key: {key}, Shape: {value.shape}")
+                if isinstance(value, torch.Tensor):  # 🔍 리스트가 아닌 경우에만 shape 출력
+                    print(f"🔍 출력 Key: {key}, Shape: {value.shape}")
+                else:
+                    print(f"⚠️ 출력 Key: {key} 는 리스트 또는 다른 형식: {(value)}")
         elif isinstance(output, torch.Tensor):
             print(f"✅ 모델 출력 Tensor 형태: {output.shape}")
         else:
@@ -68,7 +72,8 @@ def test_model_preprocessing_and_output(model_type):
         print(f"[ERROR] 모델 실행 실패: {e}")
 
 # 테스트할 모델 목록
-model_list = ["dinov2", "swinv2", "VIT", "La_Transformer", "convNext"]
+model_list = ['convNext', 'dinov2', 'swinv2',
+                               'La_Transformer', 'VIT', 'DETR']
 
 # 모든 모델에 대해 테스트 실행
 for model_name in model_list:
