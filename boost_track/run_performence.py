@@ -184,7 +184,7 @@ class VideoWriter:
             self.writer.release()
             print(f"Video saved to: {self.video_path}")
 
-def save_metrics(model_name, final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw):
+def save_metrics(model_name, data_name, final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw):
     results = {
         "Model": model_name,
         "MOTA": final_mota,
@@ -195,8 +195,9 @@ def save_metrics(model_name, final_mota, final_hota, final_idf1, total_fp, total
         "ID Switches": total_idsw
     }
     # 결과 저장
-    save_path = f"results/{model_name}_metrics.json"
-    os.makedirs('results', exist_ok=True)
+    results_path = f"results/{data_name}"
+    os.makedirs(results_path, exist_ok=True)
+    save_path = f"{results_path}/{model_name}_metrics.json"
     with open(save_path, 'w') as f:
         json.dump(results, f, indent=4)
     print(f"[INFO] Saved metrics to {save_path}")
@@ -330,7 +331,6 @@ def setup_tracker(args) -> BoostTrack:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser("BoostTrack for image sequence")
     parser.add_argument("--yolo_model", type=str, default="external/weights/yolo11x.pt")
-    parser.add_argument("--img_path", type=str, default="data/cam2_labeld_add_rect")
     parser.add_argument("--model_type", type=str,
                        choices=['convNext', 'dinov2', 'swinv2',
                                'La_Transformer', 'VIT', 'DETR'],
@@ -351,9 +351,15 @@ def parse_args() -> argparse.Namespace:
 
 def main():
     args = parse_args()
-      
-    img_files = natsorted([f for f in os.listdir(args.img_path) if f.endswith(('.jpg', '.png', '.jpeg'))])
-    xml_files = natsorted([f for f in os.listdir(args.img_path) if f.endswith('.xml')])
+
+    data_paths = {
+    "back": {"img": "data/back/imgs", "label": "data/back/labels"},
+    "side": {"img": "data/side/imgs", "label": "data/side/labels/xml_labels"}
+    }
+    cam_name = 'side'
+    
+    img_files = natsorted([f for f in os.listdir(data_paths[cam_name]['img']) if f.endswith(('.jpg', '.png', '.jpeg'))])
+    xml_files = natsorted([f for f in os.listdir(data_paths[cam_name]['label']) if f.endswith('.xml')])
     
     GeneralSettings.values['use_embedding'] = True
     GeneralSettings.values['use_ecc'] = False
@@ -378,8 +384,6 @@ def main():
         save_frame=args.save_frame,
         stop_frame_ids=[i for i in range(len(img_files)) if i%100 == 0]
     )
-    
-    cam_name = args.img_path.split('/')[-1]
 
     save_dir = f'{args.model_type}_{cam_name}_view'
     model_type = ModelConfig.get_model_name(args.reid_model)
@@ -402,8 +406,8 @@ def main():
     
     for idx, (img_name, xml_name) in enumerate(tqdm(valid_pairs)):
         frame_id = int(os.path.splitext(img_name)[0]) 
-        img_path = os.path.join(args.img_path, img_name)
-        xml_path = os.path.join(args.img_path, xml_name)
+        img_path = os.path.join(data_paths[cam_name]['img'], img_name)
+        xml_path = os.path.join(data_paths[cam_name]['label'], xml_name)
         
         np_img = cv2.imread(img_path)
         if np_img is None:
@@ -526,8 +530,8 @@ def main():
         if video_writer is not None:
             video_writer.write(track_img)
 
-        if cv2.waitKey(0) & 0xFF == ord('q'):
-            break
+        # if cv2.waitKey(0) & 0xFF == ord('q'):
+        #     break
         
     
     final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw = get_final_mot_metrics(all_metrics)
@@ -541,7 +545,7 @@ def main():
     
 
     # 최종 결과 저장
-    save_metrics(args.model_type, final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw)
+    save_metrics(args.model_type, cam_name, final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw)
 
     # Cleanup
     if video_writer is not None:

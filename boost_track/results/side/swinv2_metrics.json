@@ -1,0 +1,9 @@
+{
+    "Model": "swinv2",
+    "MOTA": 0.8458274398868458,
+    "HOTA": 0.9141932493033851,
+    "IDF1": 0.9114909459648338,
+    "False Positives": 18,
+    "False Negatives": 908,
+    "ID Switches": 55
+}

@@ -310,8 +310,8 @@ def calculate_iou(box1, box2):
     return iou
 
 if __name__ == "__main__":
-    image_dir = 'cam0_labeld/images/'
-    label_dir = 'cam0_labeld/labels/'
+    image_dir = 'data/side/imgs/'
+    label_dir = 'data/side/labels/'
     xml_dir1 = 'cam0_labeld/xml_labels/'
     xml_dir2 = 'cam1_labeld/xml_labels/'
     

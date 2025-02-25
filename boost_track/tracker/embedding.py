@@ -350,20 +350,18 @@ class EmbeddingComputer:
                 batch_embeddings = self.process_output(batch_embeddings)
                 batch_embeddings = F.normalize(batch_embeddings, p=2, dim=1)
                 batch_embeddings = batch_embeddings.cpu().numpy()
-            print(batch_bbox)
             for j, box in enumerate(batch_bbox):
                 if j < len(batch_embeddings):
                     x1, y1, x2, y2 = map(int, box)
                     box_key = f"{tag}_{x1}_{y1}_{x2}_{y2}"
                     self.cache[box_key] = batch_embeddings[j]
                     embeddings.append(batch_embeddings[j])
-                    # 박스를 시각화 (중복 실행 방지)
-                    cropped = img[y1:y2, x1:x2]
-                    cv2.namedWindow(f"Object {j+1}", cv2.WINDOW_NORMAL)
-                    cv2.imshow(f"Object {j+1}", cropped)
-            cv2.waitKey(0)  # 키 입력을 기다림
-            cv2.destroyAllWindows()  # 열린 모든 창을 닫음
-            print(batch_embeddings)
+            #         # 박스를 시각화 (중복 실행 방지)
+            #         cropped = img[y1:y2, x1:x2]
+            #         cv2.namedWindow(f"Object {j+1}", cv2.WINDOW_NORMAL)
+            #         cv2.imshow(f"Object {j+1}", cropped)
+            # cv2.waitKey(0)  # 키 입력을 기다림
+            # cv2.destroyAllWindows()  # 열린 모든 창을 닫음
         return np.array(embeddings) if embeddings else np.array([])
 
     def process_output(self, output):
