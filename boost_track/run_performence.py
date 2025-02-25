@@ -48,26 +48,6 @@ class Visualizer:
             self.id_colors[track_id] = [random.randint(150, 255) for _ in range(3)]
         return self.id_colors[track_id]
 
-    def draw_detection_boxes(self, image: np.ndarray, dets: np.ndarray, frame_mapping: Dict = None) -> np.ndarray:
-        vis_img = image.copy()
-
-        box_mapping = {}
-        for i, (x1, y1, x2, y2, conf) in enumerate(dets): 
-            if frame_mapping is not None and i in frame_mapping:
-                track_id = frame_mapping[i]
-                color = self.get_id_color(track_id)
-                
-                box_mapping.update({i: [track_id, x1, y1, x2, y2 , conf]})
-                
-                cv2.rectangle(vis_img, (int(x1), int(y1)), (int(x2), int(y2)), color, 2)
-                cv2.putText(vis_img, f"Y#{i}||T#{track_id}", (int(x1), int(y1)-10),
-                          cv2.FONT_HERSHEY_DUPLEX, 0.7, color, 2)
-            else:
-                cv2.rectangle(vis_img, (int(x1), int(y1)), (int(x2), int(y2)), (255, 255, 255), 2)
-                cv2.putText(vis_img, f"Y#{i}", (int(x1), int(y1)-10),
-                          cv2.FONT_HERSHEY_DUPLEX, 0.7, (255, 255, 255), 2)
-        return vis_img , box_mapping
-
     def draw_tracking_results(self, image: np.ndarray, tlwhs: List, ids: List[int]) -> Tuple[np.ndarray, List[int]]:
         vis_img = image.copy()
         track_id_list = []
@@ -307,13 +287,13 @@ def setup_tracker(args) -> BoostTrack:
         max_age=15,
         min_hits=0,
         det_thresh=0.55,  # 탐지 신뢰도 임계값
-        iou_threshold=0.65,
-        emb_sim_score=0.60,
+        iou_threshold=0.65, # 탐지-트랙 iou 임계값
+        emb_sim_score=0.60, # 임베딩 유사도 임계값
         lambda_iou=0.05,  # 탐지-트랙 iou 신뢰도 결합 가중치
         lambda_mhd=0.05,  # 마하라노비스 거리 유사도 가중치
         lambda_shape=0.9,  # 형태 유사도 가중치
-        use_dlo_boost=True,
-        use_duo_boost=True,
+        use_dlo_boost=True,  # DLO Boost 활성화 (예측된 위치와 높은 IoU를 가진 탐지 결과의 신뢰도를 증가시켜 추적 성능 향상)
+        use_duo_boost=True,  # DUO Boost 활성화 (기존 객체와 거리가 먼 새로운 탐지 결과의 신뢰도를 증가시켜 새로운 객체 탐지 개선)
         dlo_boost_coef=0.75,
         use_rich_s=True,
         use_sb=True,
@@ -450,33 +430,10 @@ def main():
                                                GeneralSettings['aspect_ratio_thresh'], # 박스의 너비 / 높이 비율이 최대허용값 이상이면 필터링
                                                GeneralSettings['min_box_area']) # 박스의 넓이(픽셀단위)가 최소허용값 이하이면 필터링
         
-        frame_mapping = {}
-        track_boxes = []
-        
-        """
-        해당코드는   Deprecation  예정
-        """
-        if dets is not None and ids is not None: # 무언가 탐지를한다면?
-            for det_idx, yolo_box in enumerate(dets):
-                max_iou = 0
-                matched_id = None
-                for tlwh, track_id in zip(tlwhs, ids):
-                    x1, y1 = tlwh[0], tlwh[1]
-                    x2, y2 = x1 + tlwh[2], y1 + tlwh[3]
-                    track_box = [x1, y1, x2, y2]
-                    track_boxes.append(track_box)
-                    iou = utils.calculate_iou(yolo_box[:4], track_box) # yolo box 와 track box IOU를 통햬 먜칭진행
-                    if iou > max_iou and iou > 0.6: # max이면서 겹칩정도가 적어도 N 이상은 되야함 
-                        max_iou = iou
-                        matched_id = track_id
-                        
-                if matched_id is not None:
-                    frame_mapping[det_idx] = matched_id 
-
-            yolo_tracking_id, box_mapping = visualizer.draw_detection_boxes(np_img, dets, frame_mapping)    #{yolo idx : [track_id , x1,y1,x2,y2,conf]}
+        # 트래킹 결과 시각화
         track_img, track_id_list = visualizer.draw_tracking_results(np_img, tlwhs, ids)
       
-        # xml 레이블값들의 정보를 가져오고 시각화하는 함수임 레이블링 확인 코드
+        # xml 레이블 시각화
         xml_result = utils.get_bboxes_from_xml(xml_path) #  [xml_id , x1,y1,x2,y2 ] 
         xml_vis = visualizer.draw_xml_boxes(np_img, xml_result , idx) 
 
@@ -486,9 +443,10 @@ def main():
         
         # YOLO 객체 탐지와 XML 박스를 매핑
         matched_results = utils.match_tracker_to_gt(targets, xml_path)
+
+        # 프레임별 MOT 계산
         frame_metrics = compute_mot_metrics(targets, xml_result, frame_id, matched_results)
         all_metrics.append(frame_metrics)
-
 
         cv2.putText(track_img, f"Frame: {frame_id}", (10, 30),
                           cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 255, 0), 2)
@@ -500,8 +458,7 @@ def main():
         if vis_config.visualize :
             cv2.namedWindow('yolo_plot', cv2.WINDOW_NORMAL)
             cv2.imshow('yolo_plot', yolo_plot)
-            cv2.namedWindow('yolo_tracking_id', cv2.WINDOW_NORMAL)
-            cv2.imshow('yolo_tracking_id', yolo_tracking_id)
+
             cv2.namedWindow('Tracking', cv2.WINDOW_NORMAL)
             cv2.imshow('Tracking', track_img)
             
@@ -519,13 +476,10 @@ def main():
                 cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
                 cv2.imshow(window_name, prev_img_info['image'])
             
-            
-            
             # 이전 tracking 이미지 창들만 닫기
             for window_name in prev_window_names:
                 cv2.destroyWindow(window_name)
 
-            
         # Write video frame
         if video_writer is not None:
             video_writer.write(track_img)
@@ -533,7 +487,6 @@ def main():
         # if cv2.waitKey(0) & 0xFF == ord('q'):
         #     break
         
-    
     final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw = get_final_mot_metrics(all_metrics)
 
     print(f"Final MOTA: {final_mota:.4f}")
@@ -543,7 +496,6 @@ def main():
     print(f"Total False Negatives: {total_fn}")
     print(f"Total ID Switches: {total_idsw}")
     
-
     # 최종 결과 저장
     save_metrics(args.model_type, cam_name, final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw)
 
