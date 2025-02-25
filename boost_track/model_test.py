@@ -72,7 +72,8 @@ def test_model_preprocessing_and_output(model_type):
         print(f"[ERROR] 모델 실행 실패: {e}")
 
 # 테스트할 모델 목록
-model_list = ["DETR"]
+model_list = ['convNext', 'dinov2', 'swinv2',
+                               'La_Transformer', 'VIT', 'DETR']
 
 # 모든 모델에 대해 테스트 실행
 for model_name in model_list:

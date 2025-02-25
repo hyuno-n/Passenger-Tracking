@@ -1,9 +1,0 @@
-{
-    "Model": "convNext",
-    "MOTA": 0.7370758790869834,
-    "HOTA": 0.8679915423932649,
-    "IDF1": 0.8615703908189368,
-    "False Positives": 271,
-    "False Negatives": 1755,
-    "ID Switches": 105
-}
