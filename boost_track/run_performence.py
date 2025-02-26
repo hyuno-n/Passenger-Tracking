@@ -336,7 +336,7 @@ def main():
     "back": {"img": "data/back/imgs", "label": "data/back/labels"},
     "side": {"img": "data/side/imgs", "label": "data/side/labels/xml_labels"}
     }
-    cam_name = 'side'
+    cam_name = 'back'
     
     img_files = natsorted([f for f in os.listdir(data_paths[cam_name]['img']) if f.endswith(('.jpg', '.png', '.jpeg'))])
     xml_files = natsorted([f for f in os.listdir(data_paths[cam_name]['label']) if f.endswith('.xml')])
@@ -414,9 +414,9 @@ def main():
         cv2.putText(yolo_plot, f"Frame: {idx} ({img_name})", (10, 30),
                    cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 255, 0), 2)
         
-        # 검출객체가없다면 Image Pass
-        if dets is None or len(dets) == 0: 
-            continue
+        # # 검출객체가없다면 Image Pass
+        # if dets is None or len(dets) == 0: 
+        #     continue
         
         # 이미지 전처리
         img_rgb = cv2.cvtColor(np_img, cv2.COLOR_BGR2RGB)
@@ -445,9 +445,9 @@ def main():
         matched_results = utils.match_tracker_to_gt(targets, xml_path)
 
         # 프레임별 MOT 계산
-        frame_metrics = compute_mot_metrics(targets, xml_result, frame_id, matched_results)
+        frame_metrics = compute_mot_metrics(targets, xml_result, frame_id, matched_results, cam_name)
         all_metrics.append(frame_metrics)
-
+        
         cv2.putText(track_img, f"Frame: {frame_id}", (10, 30),
                           cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 255, 0), 2)
         
