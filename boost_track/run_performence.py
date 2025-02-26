@@ -336,7 +336,7 @@ def main():
     "back": {"img": "data/back/imgs", "label": "data/back/labels"},
     "side": {"img": "data/side/imgs", "label": "data/side/labels/xml_labels"}
     }
-    cam_name = 'back'
+    cam_name = 'side'
     
     img_files = natsorted([f for f in os.listdir(data_paths[cam_name]['img']) if f.endswith(('.jpg', '.png', '.jpeg'))])
     xml_files = natsorted([f for f in os.listdir(data_paths[cam_name]['label']) if f.endswith('.xml')])

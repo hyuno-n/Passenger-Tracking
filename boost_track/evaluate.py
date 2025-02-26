@@ -74,7 +74,7 @@ def compute_mot_metrics(tracker_results, gt_boxes, frame_idx, matched_results, c
                 correct_id_matches += 1
             else:  # ID가 변경됨 → ID Switch 발생
                 id_switches += 1
-                id_switch_list.append(track_id)
+                id_switch_list.append(gt_id)
 
         # 히스토리에 현재 트랙 ID 추가 (최근 `N` 프레임 동안 유지)
         ID_MATCH_HISTORY[gt_id].append(track_id)
@@ -89,7 +89,7 @@ def compute_mot_metrics(tracker_results, gt_boxes, frame_idx, matched_results, c
     print(f"Matched Pairs: {matched_count}")
     print(f"False Positives (FP): {false_positives} (Count: {len(false_positives)})")
     print(f"False Negatives (FN): {false_negatives} (Count: {len(false_negatives)})")
-    print(f"ID Switches: {id_switches}")
+    print(f"ID Switches: {id_switch_list} (Count: {id_switches})")
     if id_switches > 0:
         print(f"ID Switch occurred for Track IDs: {id_switch_list}")
     print(f"Correctly Maintained IDs: {correct_id_matches}")
