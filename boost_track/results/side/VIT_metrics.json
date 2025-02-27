@@ -1,9 +1,9 @@
 {
     "Model": "VIT",
-    "MOTA": 0.8462989156058462,
-    "HOTA": 0.9147863068709562,
-    "IDF1": 0.9120758229171925,
-    "False Positives": 18,
-    "False Negatives": 909,
-    "ID Switches": 51
+    "MOTA": 0.8920251657881313,
+    "HOTA": 0.9186071804552992,
+    "IDF1": 0.9161113646239196,
+    "False Positives": 0,
+    "False Negatives": 592,
+    "ID Switches": 43
 }

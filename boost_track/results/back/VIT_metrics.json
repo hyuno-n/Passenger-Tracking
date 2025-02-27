@@ -1,0 +1,9 @@
+{
+    "Model": "VIT",
+    "MOTA": 0,
+    "HOTA": 0.0,
+    "IDF1": 0,
+    "False Positives": 2,
+    "False Negatives": 0,
+    "ID Switches": 0
+}
