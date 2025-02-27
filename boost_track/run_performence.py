@@ -336,7 +336,7 @@ def main():
     "back": {"img": "data/back/imgs", "label": "data/back/labels"},
     "side": {"img": "data/side/imgs", "label": "data/side/labels/xml_labels"}
     }
-    cam_name = 'side'
+    cam_name = 'back'
     
     img_files = natsorted([f for f in os.listdir(data_paths[cam_name]['img']) if f.endswith(('.jpg', '.png', '.jpeg'))])
     xml_files = natsorted([f for f in os.listdir(data_paths[cam_name]['label']) if f.endswith('.xml')])
@@ -484,8 +484,8 @@ def main():
         if video_writer is not None:
             video_writer.write(track_img)
 
-        # if cv2.waitKey(0) & 0xFF == ord('q'):
-        #     break
+        if cv2.waitKey(0) & 0xFF == ord('q'):
+            break
         
     final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw = get_final_mot_metrics(all_metrics)
 
