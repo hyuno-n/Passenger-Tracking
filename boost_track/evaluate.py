@@ -45,8 +45,11 @@ def compute_mot_metrics(tracker_results, gt_boxes, frame_idx, matched_results, c
     # GT ID가 0 또는 100, 200인 데이터가 포함된 matched_results 필터링
     matched_results = {t_id: g_id for t_id, g_id in matched_results.items() if g_id in valid_gt_ids}
 
-    # Tracker results에서도 GT ID가 0, 100, 200으로 매칭된 것 제거
-    tracker_results = [t for t in tracker_results if t[4] in valid_gt_ids]
+    # Tracker에서 GT와 매칭된 ID 목록 생성 (valid_track_ids)
+    valid_track_ids = set(matched_results.keys())
+
+    # Tracker results에서 GT와 매칭되지 않은 객체(FP)는 유지하도록 수정
+    tracker_results = [t for t in tracker_results if t[4] in valid_track_ids]
 
     total_gt = len(gt_boxes)
     total_tracks = len(tracker_results)
@@ -55,7 +58,7 @@ def compute_mot_metrics(tracker_results, gt_boxes, frame_idx, matched_results, c
     matched_count = len(matched_results)
     
     # FP (False Positives): 매칭되지 않은 Tracker 탐지
-    false_positives = list(set(t[4] for t in tracker_results) - set(matched_results.keys()))
+    false_positives = list(set(int(t[4]) for t in tracker_results) - set(matched_results.keys()))
     
     # FN (False Negatives): 매칭되지 않은 GT
     false_negatives = list(set(int(g[0]) for g in gt_boxes) - set(matched_results.values()))

@@ -4,7 +4,7 @@ from tkinter import filedialog
 from tkinter import ttk
 # GUI로 영상 재생
 frame_width, frame_height = 1920, 1080  
-output_video = "output.avi"
+output_video = "../output.avi"
 fps = 15
 class VideoPlayer:
     def __init__(self, root, video_path):
