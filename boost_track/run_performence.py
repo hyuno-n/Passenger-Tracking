@@ -164,7 +164,7 @@ class VideoWriter:
             self.writer.release()
             print(f"Video saved to: {self.video_path}")
 
-def save_metrics(model_name, data_name, final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw):
+def save_metrics(model_name, data_name, final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw, total_gt):
     results = {
         "Model": model_name,
         "MOTA": final_mota,
@@ -172,7 +172,8 @@ def save_metrics(model_name, data_name, final_mota, final_hota, final_idf1, tota
         "IDF1": final_idf1,
         "False Positives": total_fp,
         "False Negatives": total_fn,
-        "ID Switches": total_idsw
+        "ID Switches": total_idsw,
+        "Total GT": total_gt
     }
     # 결과 저장
     results_path = f"results/{data_name}"
@@ -484,10 +485,10 @@ def main():
         if video_writer is not None:
             video_writer.write(track_img)
 
-        if cv2.waitKey(0) & 0xFF == ord('q'):
-            break
+        # if cv2.waitKey(0) & 0xFF == ord('q'):
+        #     break
         
-    final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw = get_final_mot_metrics(all_metrics)
+    final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw, total_gt = get_final_mot_metrics(all_metrics)
 
     print(f"Final MOTA: {final_mota:.4f}")
     print(f"Final HOTA: {final_hota:.4f}")
@@ -495,9 +496,10 @@ def main():
     print(f"Total False Positives: {total_fp}")
     print(f"Total False Negatives: {total_fn}")
     print(f"Total ID Switches: {total_idsw}")
+    print(f"Total Ground Truth: {total_gt}")
     
     # 최종 결과 저장
-    save_metrics(args.model_type, cam_name, final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw)
+    save_metrics(args.model_type, cam_name, final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw, total_gt)
 
     # Cleanup
     if video_writer is not None:

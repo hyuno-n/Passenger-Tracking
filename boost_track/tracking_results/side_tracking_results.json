@@ -350,9 +350,7 @@
         "False Negatives": []
     },
     "68": {
-        "ID Switches": [
-            4
-        ],
+        "ID Switches": [],
         "False Positives": [],
         "False Negatives": []
     },
@@ -372,9 +370,7 @@
         "False Negatives": []
     },
     "72": {
-        "ID Switches": [
-            2
-        ],
+        "ID Switches": [],
         "False Positives": [],
         "False Negatives": []
     },
@@ -385,8 +381,8 @@
     },
     "74": {
         "ID Switches": [
-            4,
-            3
+            3,
+            4
         ],
         "False Positives": [],
         "False Negatives": []
@@ -2604,9 +2600,7 @@
         ]
     },
     "473": {
-        "ID Switches": [
-            7
-        ],
+        "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
             1
@@ -2704,8 +2698,8 @@
         ],
         "False Positives": [],
         "False Negatives": [
-            8,
-            3
+            3,
+            8
         ]
     },
     "487": {
@@ -2747,7 +2741,9 @@
         ]
     },
     "493": {
-        "ID Switches": [],
+        "ID Switches": [
+            7
+        ],
         "False Positives": [],
         "False Negatives": []
     },
@@ -2760,9 +2756,8 @@
     },
     "495": {
         "ID Switches": [
-            12,
             3,
-            11
+            12
         ],
         "False Positives": [],
         "False Negatives": []
@@ -2803,24 +2798,22 @@
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            8,
             2,
-            7
+            7,
+            8
         ]
     },
     "501": {
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            8,
             2,
-            7
+            7,
+            8
         ]
     },
     "502": {
-        "ID Switches": [
-            8
-        ],
+        "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
             11
@@ -2830,12 +2823,14 @@
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            11,
-            7
+            7,
+            11
         ]
     },
     "504": {
-        "ID Switches": [],
+        "ID Switches": [
+            13
+        ],
         "False Positives": [],
         "False Negatives": []
     },
@@ -2850,15 +2845,14 @@
         ],
         "False Positives": [],
         "False Negatives": [
-            8,
             1,
+            8,
             9
         ]
     },
     "507": {
         "ID Switches": [
-            9,
-            3
+            9
         ],
         "False Positives": [],
         "False Negatives": [
@@ -2867,9 +2861,7 @@
         ]
     },
     "508": {
-        "ID Switches": [
-            3
-        ],
+        "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
             8
@@ -2879,16 +2871,16 @@
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            8,
-            2
+            2,
+            8
         ]
     },
     "510": {
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            8,
-            2
+            2,
+            8
         ]
     },
     "511": {
@@ -2917,9 +2909,9 @@
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
+            7,
             8,
-            9,
-            7
+            9
         ]
     },
     "515": {
@@ -2929,9 +2921,9 @@
         ],
         "False Positives": [],
         "False Negatives": [
+            7,
             8,
-            9,
-            7
+            9
         ]
     },
     "516": {
@@ -2949,18 +2941,18 @@
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            8,
             2,
             3,
-            7
+            7,
+            8
         ]
     },
     "518": {
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            12,
-            7
+            7,
+            12
         ]
     },
     "519": {
@@ -2983,8 +2975,8 @@
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            9,
-            7
+            7,
+            9
         ]
     },
     "522": {
@@ -2992,32 +2984,32 @@
         "False Positives": [],
         "False Negatives": [
             3,
-            13,
-            7
+            7,
+            13
         ]
     },
     "523": {
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            13,
-            7
+            7,
+            13
         ]
     },
     "524": {
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            13,
-            7
+            7,
+            13
         ]
     },
     "525": {
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            13,
-            7
+            7,
+            13
         ]
     },
     "526": {
@@ -3037,7 +3029,9 @@
         ]
     },
     "528": {
-        "ID Switches": [],
+        "ID Switches": [
+            11
+        ],
         "False Positives": [],
         "False Negatives": []
     },
@@ -3064,8 +3058,8 @@
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            9,
-            4
+            4,
+            9
         ]
     },
     "533": {
@@ -3121,8 +3115,8 @@
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            9,
-            4
+            4,
+            9
         ]
     },
     "541": {
@@ -3224,8 +3218,8 @@
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            11,
-            7
+            7,
+            11
         ]
     },
     "557": {
@@ -3272,8 +3266,8 @@
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            11,
-            4
+            4,
+            11
         ]
     },
     "564": {
@@ -3885,8 +3879,8 @@
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            8,
-            7
+            7,
+            8
         ]
     },
     "649": {
@@ -3900,8 +3894,8 @@
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            9,
-            7
+            7,
+            9
         ]
     },
     "651": {
@@ -3985,8 +3979,8 @@
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            9,
-            7
+            7,
+            9
         ]
     },
     "664": {
@@ -4246,9 +4240,9 @@
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
+            7,
             8,
-            11,
-            7
+            11
         ]
     },
     "700": {
@@ -4262,9 +4256,9 @@
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
+            4,
             8,
-            11,
-            4
+            11
         ]
     },
     "702": {
@@ -4421,8 +4415,8 @@
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            11,
-            7
+            7,
+            11
         ]
     },
     "723": {
@@ -4516,9 +4510,9 @@
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
+            7,
             8,
-            11,
-            7
+            11
         ]
     },
     "736": {
@@ -4976,16 +4970,16 @@
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            11,
-            4
+            4,
+            11
         ]
     },
     "802": {
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            11,
-            4
+            4,
+            11
         ]
     },
     "803": {
@@ -5134,8 +5128,8 @@
         "ID Switches": [],
         "False Positives": [],
         "False Negatives": [
-            9,
-            2
+            2,
+            9
         ]
     },
     "825": {
