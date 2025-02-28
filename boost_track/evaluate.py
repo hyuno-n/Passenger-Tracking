@@ -47,7 +47,7 @@ def compute_mot_metrics(tracker_results, gt_boxes, frame_idx, matched_results, c
 
     # Tracker에서 GT와 매칭된 ID 목록 생성 (valid_track_ids)
     valid_track_ids = set(matched_results.keys())
-
+    print(valid_track_ids)
     # Tracker results에서 GT와 매칭되지 않은 객체(FP)는 유지하도록 수정
     tracker_results = [t for t in tracker_results if t[4] in valid_track_ids]
 
@@ -60,8 +60,14 @@ def compute_mot_metrics(tracker_results, gt_boxes, frame_idx, matched_results, c
     # FP (False Positives): 매칭되지 않은 Tracker 탐지
     false_positives = list(set(int(t[4]) for t in tracker_results) - set(matched_results.keys()))
     
-    # FN (False Negatives): 매칭되지 않은 GT
-    false_negatives = list(set(int(g[0]) for g in gt_boxes) - set(matched_results.values()))
+    # 모든 GT ID 리스트 (중복 포함)
+    gt_ids = [int(g[0]) for g in gt_boxes]
+
+    # 매칭된 GT ID 목록 (중복 없이 저장)
+    matched_gt_ids = set(matched_results.values())  # 이미 매칭된 GT ID들 (중복 제거)
+
+    # FN 계산 (GT ID 중 하나도 매칭되지 않은 ID들만 카운트)
+    false_negatives = [gt_id for gt_id in set(gt_ids) if gt_id not in matched_gt_ids]
 
     # ID Switch 계산 (최근 N 프레임 히스토리와 비교)
     id_switches = 0
@@ -165,4 +171,4 @@ def get_final_mot_metrics(all_metrics):
     # HOTA 계산 (ID Precision과 Recall을 활용)
     hota = compute_hota(idp, idr)
 
-    return mota, hota, idf1, total_fp, total_fn, total_idsw
+    return mota, hota, idf1, total_fp, total_fn, total_idsw, total_gt
