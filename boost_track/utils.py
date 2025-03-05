@@ -161,7 +161,7 @@ def get_bboxes_from_xml(xml_file):
     
     return sorted(bboxes) 
 
-def match_tracker_to_gt(tracker_results, xml_file, iou_threshold=0.5, distance_threshold=100):
+def match_tracker_to_gt(tracker_results, xml_file, iou_threshold=0.5, distance_threshold=100, min_iou_threshold=0.1):
     """
     트래커 결과와 GT 데이터를 매칭 (IoU + 거리 기반 보완)
 
@@ -169,6 +169,7 @@ def match_tracker_to_gt(tracker_results, xml_file, iou_threshold=0.5, distance_t
     :param xml_file: GT 데이터가 포함된 XML 파일 경로
     :param iou_threshold: IoU 매칭 기준
     :param distance_threshold: 거리 기반 보완 기준
+    :param min_iou_threshold: 최소 IoU 기준 (이 값보다 낮으면 거리 매칭도 수행 안 함)
     :return: 트래커 ID → GT ID 매핑 딕셔너리
     """
     gt_boxes = get_bboxes_from_xml(xml_file)  # GT 박스 로드
@@ -201,8 +202,18 @@ def match_tracker_to_gt(tracker_results, xml_file, iou_threshold=0.5, distance_t
             unmatched_gt.remove(best_gt_id)  # 매칭된 GT 제거
             unmatched_tracks.remove(track_id)  # 매칭된 트랙 제거
 
-    # IoU로 매칭되지 않은 트랙 → 거리 기반으로 보완
-    for track_id in unmatched_tracks[:]:  # 리스트 복사 후 수정
+    # IoU가 너무 낮은(10% 이하) 트랙들은 거리 기반 매칭도 수행 안 함
+    filtered_unmatched_tracks = []
+    
+    for track_id in unmatched_tracks:
+        track_box = track_dict[track_id]
+        max_iou = max(calculate_iou(track_box, gt_dict[gt_id]) for gt_id in unmatched_gt) if unmatched_gt else 0
+
+        if max_iou > min_iou_threshold:  # 최소 IoU 기준을 넘는 트랙만 남김
+            filtered_unmatched_tracks.append(track_id)
+
+    # 거리 기반 보완 (IoU 10% 초과한 트랙만 수행)
+    for track_id in filtered_unmatched_tracks:
         track_box = track_dict[track_id]
         min_distance = float('inf')
         best_gt_id = None
@@ -218,4 +229,6 @@ def match_tracker_to_gt(tracker_results, xml_file, iou_threshold=0.5, distance_t
             track_to_gt_mapping[track_id] = best_gt_id
             unmatched_gt.remove(best_gt_id)  # 매칭된 GT 제거
             unmatched_tracks.remove(track_id)  # 매칭된 트랙 제거
+
     return track_to_gt_mapping
+
