@@ -337,7 +337,7 @@ def main():
     "back": {"img": "data/back/imgs", "label": "data/back/labels"},
     "side": {"img": "data/side/imgs", "label": "data/side/labels/xml_labels"}
     }
-    cam_name = 'back'
+    cam_name = 'side'
     
     img_files = natsorted([f for f in os.listdir(data_paths[cam_name]['img']) if f.endswith(('.jpg', '.png', '.jpeg'))])
     xml_files = natsorted([f for f in os.listdir(data_paths[cam_name]['label']) if f.endswith('.xml')])
@@ -488,13 +488,14 @@ def main():
         # if cv2.waitKey(0) & 0xFF == ord('q'):
         #     break
         
-    final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw, total_gt = get_final_mot_metrics(all_metrics)
+    final_mota, final_hota, final_idf1, total_fp, total_fn, total_idsw, total_gt, total_tp = get_final_mot_metrics(all_metrics)
 
     print(f"Final MOTA: {final_mota:.4f}")
     print(f"Final HOTA: {final_hota:.4f}")
     print(f"Final IDF1: {final_idf1:.4f}")
     print(f"Total False Positives: {total_fp}")
     print(f"Total False Negatives: {total_fn}")
+    print(f"Total True Positives: {total_tp}")
     print(f"Total ID Switches: {total_idsw}")
     print(f"Total Ground Truth: {total_gt}")
     
