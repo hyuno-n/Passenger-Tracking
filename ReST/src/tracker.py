@@ -15,7 +15,7 @@ from torchvision.ops import sigmoid_focal_loss
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from warmup_scheduler import GradualWarmupScheduler
-
+from ultralytics import YOLO
 
 class Tracker:
 
@@ -23,6 +23,7 @@ class Tracker:
         self.cfg = cfg
         self.device=self.cfg.MODEL.DEVICE
         self.min_loss = 1e8
+        # self.detector = YOLO("yolov11n.pt")  # ✅ YOLOv11 모델 로드
 
         if self.cfg.FE.CHOICE == 'CNN':
             # Default ReID model, OS-Net here
@@ -138,25 +139,28 @@ class Tracker:
         logger.info('Evaluation Result:')
         evaluate(self.cfg, self.output_dir)
 
+    ''' 추후 개발 예정 '''
     def predict(self):
         logger.info("🚀 Predicting without GT labels...")
-        predict_dataset = self.load_dataset()[0]
+        predict_dataset = self.load_dataset(gt_required=False)[0]
+        logger.info(f"✅ `predict_dataset` 로드 완료, 총 {len(predict_dataset)} 프레임")
 
-        predictions = {}  # ✅ 예측 결과 저장할 딕셔너리
+        for frame_id, frame_path in predict_dataset:
+            logger.info(f"📌 프레임 로드: {frame_path}")
 
-        for index in range(len(predict_dataset)):
-            graph, node_feature, edge_feature = predict_dataset.__getInference__(index)
-            predictions[index] = {
-                "num_nodes": graph.num_nodes(),
-                "num_edges": graph.num_edges()
-            }
-        
-        # ✅ 예측된 결과 저장
-        output_file = osp.join(self.dataset_dir, 'output', 'predictions.json')
-        with open(output_file, 'w') as fp:
-            json.dump(predictions, fp, indent=4)
+            # ✅ YOLO를 이용한 객체 검출
+            results = self.detector(frame_path)
 
-        logger.info(f"✅ 예측 결과 저장 완료: {output_file}")
+            # ✅ 감지된 객체들의 bounding box 저장
+            detected_boxes = []
+            for result in results:
+                for box in result.boxes.xyxy:
+                    x1, y1, x2, y2 = box.tolist()
+                    w, h = x2 - x1, y2 - y1
+                    detected_boxes.append([x1, y1, w, h, -1, 0])  # [x, y, w, h, track_id, cam_id]
+
+            # ✅ `frames`에 bounding box 추가
+            self._S[str(frame_id)] = detected_boxes
 
 
     def _train_one_epoch(self, epoch: int, dataloader, optimizer, scheduler, writer):
