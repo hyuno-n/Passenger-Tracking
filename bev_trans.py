@@ -15,6 +15,18 @@ def click_event(event, x, y, flags, param):
         cv2.circle(param, (x, y), 5, (0, 0, 255), -1)
         cv2.imshow("Select Points", param)
 
+def add_black_padding(image, padding_size=200):
+    """
+    Add black padding around the image.
+    """
+    h, w, c = image.shape
+    new_h, new_w = h + 2 * padding_size, w + 2 * padding_size
+
+    padded_image = np.zeros((new_h, new_w, c), dtype=np.uint8)
+    padded_image[padding_size:padding_size + h, padding_size:padding_size + w] = image
+
+    return padded_image, padding_size
+
 def get_homography_matrix(image):
     """
     Compute homography matrix from user-selected points.
@@ -30,7 +42,7 @@ def get_homography_matrix(image):
     if len(points) != 4:
         raise ValueError("Exactly 4 points are required to compute homography.")
     
-    world_points = np.array([[0, 0], [800, 0], [0, 600], [800, 600]])
+    world_points = np.array([[0, 0], [800, 0], [0, 600], [800, 600]])  # 원하는 BEV 좌표
     H, _ = cv2.findHomography(np.array(points), world_points)
     return H
 
@@ -60,16 +72,20 @@ def main():
     # Load images
     image1 = cv2.imread('image1.jpg')  # Replace with actual image paths
     image2 = cv2.imread('image2.jpg')
-    
+
+    # Add black padding
+    image1_padded, padding_size1 = add_black_padding(image1, padding_size=200)
+    image2_padded, padding_size2 = add_black_padding(image2, padding_size=200)
+
     # Compute homography matrix with manual point selection
     print("Select 4 points for Image 1")
-    H1 = get_homography_matrix(image1)
+    H1 = get_homography_matrix(image1_padded)
     print("Select 4 points for Image 2")
-    H2 = get_homography_matrix(image2)
+    H2 = get_homography_matrix(image2_padded)
     
     # Transform images to BEV
-    bev_image1 = warp_to_bev(image1, H1)
-    bev_image2 = warp_to_bev(image2, H2)
+    bev_image1 = warp_to_bev(image1_padded, H1)
+    bev_image2 = warp_to_bev(image2_padded, H2)
     
     # Show results
     cv2.imshow("BEV View 1", bev_image1)

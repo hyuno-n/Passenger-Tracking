@@ -206,17 +206,36 @@ class BaseGraphDataset(Dataset):
     def load_images(self, seq_id: int, frame_id: int, tensor=True):
         imgs = []
         for img_path in self._P[seq_id]:
-            print(img_path.format(frame_id))
-            img = cv2.imread(img_path.format(frame_id))
+            formatted_path = img_path.format(frame_id)
+
+            # ✅ 파일이 없으면 경고 출력 후 건너뛰기
+            if not os.path.exists(formatted_path):
+                print(f"🚨 [경고] 이미지 파일이 없음: {formatted_path} → 건너뜀")
+                continue  # 다음 이미지 로드 시도
+
+            img = cv2.imread(formatted_path)
+
+            # ✅ OpenCV에서 이미지를 제대로 불러왔는지 확인
+            if img is None:
+                print(f"🚨 [경고] OpenCV에서 이미지를 읽을 수 없음: {formatted_path} → 건너뜀")
+                continue  # 다음 이미지 로드 시도
+
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
             if tensor:
                 img = T.ToTensor()(img)  # (C, H, W), float
             else:
                 img = torch.from_numpy(img)
                 img = torch.permute(img, (2, 0, 1))  # (C, H, W), uint8
-            imgs.append(img)
-        return imgs
 
+            imgs.append(img)
+
+        # ✅ 모든 이미지가 누락되었으면 빈 리스트 반환
+        if not imgs:
+            print(f"⚠ [주의] 프레임 {frame_id}의 모든 카메라 이미지가 없음 → 이 프레임 스킵됨")
+            return None
+
+        return imgs
     def __len__(self):
         if self.mode != 'test':
             return len(self.chunks)
