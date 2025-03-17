@@ -9,3 +9,4 @@ INIT_BoostTrack/
 *.pth
 *.tar
 *.avi
+*.pt
