@@ -27,7 +27,9 @@ def compute_overlap_metrics(side_results, back_results):
     conversion_details = {}      # 프레임별 FN→TP 전환 상세 정보
     
     common_frames = set(side_results.keys()).intersection(set(back_results.keys()))
-    
+
+    side_conversion, back_conversion = 0, 0
+
     for frame in common_frames:
         side_data = side_results[frame]
         back_data = back_results[frame]
@@ -58,6 +60,9 @@ def compute_overlap_metrics(side_results, back_results):
         back_fn_to_tp = back_fn.intersection(side_tp)
         
         frame_conversion = len(side_fn_to_tp) + len(back_fn_to_tp)
+        side_conversion += len(side_fn_to_tp)
+        back_conversion += len(back_fn_to_tp)
+        
         fn_tp_conversion_count += frame_conversion
         
         if frame_conversion > 0:
@@ -71,8 +76,9 @@ def compute_overlap_metrics(side_results, back_results):
         key: (overlap_counts[key] / total_counts[key] * 100 if total_counts[key] > 0 else 0)
         for key in overlap_counts
     }
-    
-    return overlap_counts, total_counts, overlap_percentages, fn_tp_conversion_count, conversion_details
+
+    return overlap_counts, total_counts, overlap_percentages, fn_tp_conversion_count, conversion_details, side_conversion, back_conversion
+
 
 def compute_idsw_complement_metrics(side_results, back_results):
     """
@@ -117,6 +123,37 @@ def compute_idsw_complement_metrics(side_results, back_results):
     
     return total_complement, complement_details
 
+
+def compute_fn_tp_with_idsw(conversion_details, side_results, back_results):
+    """
+    FN에서 TP로 전환된 객체 중 IDSW가 발생한 경우를 확인하는 함수.
+    
+    - conversion_details: FN → TP로 변환된 객체 목록 (프레임별)
+    - side_results, back_results: IDSW 정보를 포함한 원본 데이터
+    
+    반환:
+      - fn_tp_with_idsw_count: IDSW가 발생한 FN→TP 전환 케이스 총합
+      - fn_tp_with_idsw_details: 프레임별 상세 정보
+    """
+    fn_tp_with_idsw_count = 0
+    fn_tp_with_idsw_details = {}
+    
+    for frame, data in conversion_details.items():
+        fn_tp_ids = set(data.get("FN->TP", []))
+        
+        # 해당 프레임의 IDSW 목록 가져오기
+        side_idsw = set(side_results.get(frame, {}).get("ID Switches", []))
+        back_idsw = set(back_results.get(frame, {}).get("ID Switches", []))
+        
+        # FN→TP 객체 중 IDSW가 발생한 경우 확인
+        fn_tp_with_idsw = fn_tp_ids.intersection(side_idsw.union(back_idsw))
+        
+        if fn_tp_with_idsw:
+            fn_tp_with_idsw_count += len(fn_tp_with_idsw)
+            fn_tp_with_idsw_details[frame] = list(fn_tp_with_idsw)
+    
+    return fn_tp_with_idsw_count, fn_tp_with_idsw_details
+
 # 파일 경로 설정
 side_file_path = "./tracking_results/side_tracking_results.json"
 back_file_path = "./tracking_results/back_tracking_results.json"
@@ -126,7 +163,13 @@ side_data = load_json(side_file_path)
 back_data = load_json(back_file_path)
 
 # 중복도 및 FN→TP 전환 케이스 계산
-overlap_counts, total_counts, overlap_percentages, fn_tp_conversion_count, conversion_details = compute_overlap_metrics(side_data, back_data)
+overlap_counts, total_counts, overlap_percentages, fn_tp_conversion_count, conversion_details, side, back = compute_overlap_metrics(side_data, back_data)
+
+# 🔹 FN→TP 중 IDSW 발생한 경우 확인
+fn_tp_with_idsw_count, fn_tp_with_idsw_details = compute_fn_tp_with_idsw(
+    conversion_details, side_data, back_data
+)
+
 
 print("=== 중복된 IDSW, FP, FN 개수 (같은 프레임에서만) ===")
 print(overlap_counts)
@@ -134,16 +177,30 @@ print("\n=== 전체 IDSW, FP, FN 개수 ===")
 print(total_counts)
 print("\n=== 중복도 (퍼센트) ===")
 print(overlap_percentages)
-print("\n=== FN에서 TP로 전환된 경우 개수 ===")
+print("\n=== FN에서 TP로 전환 가능 경우 개수 ===")
 print(fn_tp_conversion_count)
+print("\n=== 측면, FN에서 TP로 전환 가능 경우 개수 ===")
+print(side)
+print("\n=== 후면, FN에서 TP로 전환 가능 경우 개수 ===")
+print(back)
+
 # 필요시 상세 정보 출력:
 # for frame, details in conversion_details.items():
 #     print(f"🔹 프레임 {frame}: {details}")
 
 # IDSW 보완 케이스 계산
 total_complement, complement_details = compute_idsw_complement_metrics(side_data, back_data)
-print("\n=== 보완된 ID Switch (IDSW) 케이스 총합 ===")
+
+print("\n=== 보완 가능 ID Switch (IDSW) 케이스 총합 ===")
 print(total_complement)
 # print("\n=== 프레임별 보완된 ID Switch 상세 정보 ===")
 # for frame, details in complement_details.items():
 #     print(f"🔹 프레임 {frame}: {details}")
+
+print("\n=== FN→TP 전환된 객체 중 IDSW 발생한 케이스 총합 ===")
+print(fn_tp_with_idsw_count)
+
+# 필요시 상세 정보 출력
+for frame, details in fn_tp_with_idsw_details.items():
+    print(f"🔹 프레임 {frame}: IDSW 포함된 FN→TP 전환 객체 {details}")
+

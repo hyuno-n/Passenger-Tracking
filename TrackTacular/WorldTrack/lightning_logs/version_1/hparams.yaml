@@ -1,0 +1,29 @@
+_instantiator: lightning.pytorch.cli.instantiate_module
+bounds:
+- -75
+- 75
+- -75
+- 75
+- -1
+- 5
+conf_threshold: 0.5
+depth:
+- 100
+- 2.0
+- 25
+encoder_name: res18
+feat2d_dim: 128
+learning_rate: 0.001
+max_detections: 60
+model_name: segnet
+num_classes: 1
+resolution:
+- 200
+- 4
+- 200
+scene_centroid:
+- 0.0
+- 0.0
+- 0.0
+use_temporal_cache: true
+z_sign: 1
