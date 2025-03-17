@@ -27,7 +27,9 @@ def compute_overlap_metrics(side_results, back_results):
     conversion_details = {}      # 프레임별 FN→TP 전환 상세 정보
     
     common_frames = set(side_results.keys()).intersection(set(back_results.keys()))
+
     side_conversion, back_conversion = 0, 0
+
     for frame in common_frames:
         side_data = side_results[frame]
         back_data = back_results[frame]
@@ -74,8 +76,9 @@ def compute_overlap_metrics(side_results, back_results):
         key: (overlap_counts[key] / total_counts[key] * 100 if total_counts[key] > 0 else 0)
         for key in overlap_counts
     }
-    
+
     return overlap_counts, total_counts, overlap_percentages, fn_tp_conversion_count, conversion_details, side_conversion, back_conversion
+
 
 def compute_idsw_complement_metrics(side_results, back_results):
     """
@@ -120,6 +123,7 @@ def compute_idsw_complement_metrics(side_results, back_results):
     
     return total_complement, complement_details
 
+
 def compute_fn_tp_with_idsw(conversion_details, side_results, back_results):
     """
     FN에서 TP로 전환된 객체 중 IDSW가 발생한 경우를 확인하는 함수.
@@ -150,8 +154,6 @@ def compute_fn_tp_with_idsw(conversion_details, side_results, back_results):
     
     return fn_tp_with_idsw_count, fn_tp_with_idsw_details
 
-
-
 # 파일 경로 설정
 side_file_path = "./tracking_results/side_tracking_results.json"
 back_file_path = "./tracking_results/back_tracking_results.json"
@@ -168,6 +170,7 @@ fn_tp_with_idsw_count, fn_tp_with_idsw_details = compute_fn_tp_with_idsw(
     conversion_details, side_data, back_data
 )
 
+
 print("=== 중복된 IDSW, FP, FN 개수 (같은 프레임에서만) ===")
 print(overlap_counts)
 print("\n=== 전체 IDSW, FP, FN 개수 ===")
@@ -180,6 +183,7 @@ print("\n=== 측면, FN에서 TP로 전환 가능 경우 개수 ===")
 print(side)
 print("\n=== 후면, FN에서 TP로 전환 가능 경우 개수 ===")
 print(back)
+
 # 필요시 상세 정보 출력:
 # for frame, details in conversion_details.items():
 #     print(f"🔹 프레임 {frame}: {details}")
@@ -199,3 +203,4 @@ print(fn_tp_with_idsw_count)
 # 필요시 상세 정보 출력
 for frame, details in fn_tp_with_idsw_details.items():
     print(f"🔹 프레임 {frame}: IDSW 포함된 FN→TP 전환 객체 {details}")
+
