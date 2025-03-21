@@ -62,7 +62,7 @@ if len(people1) < 1 or len(people2) < 1:
     print(f"❌ 검출된 사람이 부족함 (Image1: {len(people1)}, Image2: {len(people2)})")
     exit()
 
-# 📌 Homography 변환 적용 (박스 하단 중앙점 활용)
+# 📌 Homography 변환 적용 
 def apply_homography(points, H):
     points_homogeneous = cv2.perspectiveTransform(np.array([points]), H)
     return points_homogeneous[0]
