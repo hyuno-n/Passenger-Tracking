@@ -9,7 +9,7 @@ from scipy.spatial import cKDTree
 model = YOLO("yolo12x.pt")
 
 # 📌 이미지 로드 (캠 1: 측면, 캠 2-1: 후면)
-image1_path = "./image1.jpg"  # 캠 1 (측면)
+image1_path = "./test.png"  # 캠 1 (측면)
 image2_path = "./image2.jpg"  # 캠 2-1 (후면)
 
 img1 = cv2.imread(image1_path)
@@ -95,7 +95,7 @@ E = K.T @ F @ K  # 🚀 오류 발생 방지!
 _, R, T, _ = cv2.recoverPose(E, pts1, pts2, K)
 
 P1 = K @ np.hstack((np.eye(3), np.zeros((3, 1))))
-P2 = K @ np.hstack((R, T))
+P2 = K @ np.hstack((R, -T))  # Z 축 방향을 반대로 설정
 
 points_4D = cv2.triangulatePoints(P1, P2, pts1.T, pts2.T)
 points_3D = points_4D[:3] / points_4D[3]  # Homogeneous 좌표 변환
@@ -123,7 +123,7 @@ ax3.scatter(points_3D[0], points_3D[1], points_3D[2], c='b', marker='o', label="
 ax3.set_xlabel("X axis")
 ax3.set_ylabel("Y axis")
 ax3.set_zlabel("Z axis")
-ax3.set_title("3D People Localization (측면 & 후면)")
+ax3.set_title("3D People Localization")
 ax3.legend()
 
 plt.tight_layout()

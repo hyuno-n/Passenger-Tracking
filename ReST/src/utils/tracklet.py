@@ -247,8 +247,8 @@ class Tracklet():
                               node_attrs=['tID']).to_undirected()
 
         # visualize graph
-        # save_graph(self.cfg, nxg, os.path.join(self.outpu_dir,'visualize', f'cluster_{self.time}.png'), now=self.time+self.cfg.TEST.FRAME_START)
-        # nxg = self.toSimpleGraph(nxg) # make cc w/ only one node disappear, decrease Wildtrack performance a little
+        save_graph(self.cfg, nxg, os.path.join(self.outpu_dir,'visualize', f'cluster_{self.time}.png'), now=self.time+self.cfg.TEST.FRAME_START)
+        nxg = self.toSimpleGraph(nxg) # make cc w/ only one node disappear, decrease Wildtrack performance a little
 
         g_tID = self.graph.ndata['tID']
         g_cID = self.graph.ndata['cID']
