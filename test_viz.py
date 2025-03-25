@@ -105,9 +105,13 @@ for i in range(num_frames):
     seat_start_x = 30 # 앞쪽 30 공백 유지
     seat_start_y = 0   # 좌석 시작 위치
     
-    # 기존 4x2 좌석 배열
+    # 기존 좌석 배열 수정
     for row in range(2):  # 총 2줄
-        for col in range(4):  # 각 줄에 4개씩
+        if row == 0:
+            num_seats = 4  # 위 줄에 4개
+        else:
+            num_seats = 6  # 아래 줄에 6개
+        for col in range(num_seats):
             x = seat_start_x + col * seat_width
             y = seat_start_y + row * seat_height
             rect = plt.Rectangle((x, y), seat_width, seat_height, fill=False, edgecolor='gray', linestyle='--', linewidth=1.5)
