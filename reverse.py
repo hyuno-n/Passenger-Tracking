@@ -172,7 +172,7 @@ def visualize_results(img1_viz, img2_viz, pts1, pts2):
     plt.tight_layout()
     plt.show()
 
-visualize_results(img1_viz, img2_viz, transformed_pts1, transformed_pts2)
+# visualize_results(img1_viz, img2_viz, transformed_pts1, transformed_pts2)
 # 역행렬 계산
 H1_inv = np.linalg.inv(H1)
 H2_inv = np.linalg.inv(H2)
