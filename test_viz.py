@@ -6,11 +6,11 @@ import matplotlib.pyplot as plt
 from ultralytics import YOLO
 
 # 📌 YOLO 모델 로드
-model = YOLO("head.pt")
+model = YOLO("head.pt", verbose=False)
 
 # 📌 데이터 폴더 경로 설정
-side_folder = "data/side/imgs"
-back_folder = "data/back/imgs"
+side_folder = "output_scenario/scen1/camera6_image_raw_flat_single"
+back_folder = "output_scenario/scen1/camera8_image_raw_flat_single"
 
 def extract_number(filename):
     """파일명에서 숫자 부분만 추출 (예: '144 (copy).jpg' → 144)"""
@@ -35,24 +35,91 @@ back_images = load_images_in_order(back_folder)
 # 이미지가 순서대로 매칭되어야 하므로 최소한의 프레임 수를 기준으로 반복
 num_frames = min(len(side_images), len(back_images))
 
-# Homography 행렬 (예제 값, 필요시 변경)
+# Homography 행렬 
 H1 = np.array([
-    [ 2.85314111e-01, -3.69907242e-01, -1.28672159e+02],
-    [-4.28170215e-02, -7.87077601e-01,  5.67835561e+02],
-    [-2.23331197e-04, -2.08590859e-03,  1.00000000e+00]
+    [ 3.12293052e-01, -3.06614997e+00,  9.23450556e+02],
+    [-5.61703036e-01, -5.89954372e-01,  5.55107180e+02],
+    [ 6.31420942e-04, -4.62906929e-03 , 1.00000000e+00]
 ])
 
 H2 = np.array([
-    [-6.83579819e-01, -6.01078807e+00,  1.51252642e+03],
-    [-2.64736625e+00, -1.58683687e+00,  1.62782158e+03],
-    [-1.69854645e-03, -1.41089059e-02,  1.00000000e+00]
- ])
+    [ 6.06036999e-03,  2.15704280e-01, -2.04480699e+02],
+    [ 4.31094911e-01, -3.99161955e-01, -1.56359721e+02],
+    [ 1.00314085e-04, -2.97126407e-03,  1.00000000e+00]
+])
+
+# 현실 좌표 영역 정의 (0,0)-(550,240)
+REAL_AREA = np.array([[0, 0], [0, 240], [550, 240], [550, 0]], dtype=np.float32)
+
+
+def inverse_homography(points, H):
+    H_inv = np.linalg.inv(H)
+    return cv2.perspectiveTransform(np.array([points], dtype=np.float32), H_inv)[0]
+
+def point_in_polygon(point, polygon):
+    return cv2.pointPolygonTest(polygon.astype(np.float32), tuple(point), False) >= 0
+
+def detect_people_in_real_area(image, padding, H):
+    results = model(image)
+    person_data = []
+    img_copy = image.copy()
+    H_inv = np.linalg.inv(H)
+
+    for r in results:
+        for box in r.boxes:
+            if int(box.cls) == 0:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                cx = (x1 + x2) // 2
+                cy = (y1 + y2) // 2
+                pt_image = np.array([[cx + padding[0], cy + padding[1]]], dtype=np.float32)
+                pt_real = apply_homography(pt_image, H)
+                if point_in_polygon(pt_real[0], REAL_AREA):
+                    person_data.append(pt_image[0])
+                cv2.rectangle(img_copy, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.circle(img_copy, (cx, cy), 5, (0, 0, 255), -1)
+    return np.array(person_data, dtype=np.float32), img_copy
+
+def apply_homography(points, H):
+    return cv2.perspectiveTransform(np.array([points]), H)[0]
+
+# 공통 좌석 설정
+seat_width = 75
+seat_height = 50
+seat_start_x = 30
+seat_start_y = 0
+
+# 좌석 좌표 계산 함수
+def add_seat_boxes(ax):
+    # 기본 좌석 (2줄)
+    for row in range(2):
+        num_seats = 7 if row == 0 else 5
+        for col in range(num_seats):
+            x = seat_start_x + col * seat_width
+            y = seat_start_y + row * seat_height
+            rect = plt.Rectangle((x, y), seat_width, seat_height,
+                                 fill=False, edgecolor='gray', linestyle='--', linewidth=1.5)
+            ax.add_patch(rect)
+    # 추가 좌석 (3개)
+    for offset in range(2, 5):
+        x = seat_start_x + offset * seat_width
+        y = 190
+        rect = plt.Rectangle((x, y), seat_width, seat_height,
+                             fill=False, edgecolor='gray', linestyle='--', linewidth=1.5)
+        ax.add_patch(rect)
+
+def render_rotated_plot(fig, temp_path, rotate_code):
+    fig.savefig(temp_path, bbox_inches='tight')
+    plt.close(fig)
+    img = cv2.imread(temp_path)
+    rotated = cv2.rotate(img, rotate_code)
+    os.remove(temp_path)
+    return rotated
 
 for i in range(num_frames):
     img1 = side_images[i]
     img2 = back_images[i]
     
-    padding1 = (700,500)  # 측면 패딩 보정값
+    padding1 = (300,150)  # 측면 패딩 보정값
     padding2 = (300,150)  # 후면 패딩 보정값
     
     def detect_people(image, padding):
@@ -70,70 +137,61 @@ for i in range(num_frames):
                     cv2.circle(img_copy, (cx, cy), 5, (0, 0, 255), -1)
         return np.array(person_data, dtype=np.float32), img_copy
 
-    people1, img1_viz = detect_people(img1, padding1)
-    people2, img2_viz = detect_people(img2, padding2)
+    # 감지 및 변환
+    people1, img1_viz = detect_people_in_real_area(img1, padding1, H1)
+    people2, img2_viz = detect_people_in_real_area(img2, padding2, H2)
+
+    transformed_pts1 = apply_homography(people1, H1)
+    transformed_pts2 = apply_homography(people2, H2)
     
     if len(people1) < 1 or len(people2) < 1:
         print(f"❌ 검출된 사람이 부족함 (Frame {i})")
         continue
 
-    def apply_homography(points, H):
-        points_homogeneous = cv2.perspectiveTransform(np.array([points]), H)
-        return points_homogeneous[0]
+    # 후면 YOLO
+    cv2.namedWindow("Back - YOLO", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("Back - YOLO", 640, 640)
+    cv2.imshow("Back - YOLO", img1_viz)
+    cv2.moveWindow("Back - YOLO", 0, 0)
 
-    transformed_pts1 = apply_homography(people1, H1)
-    transformed_pts2 = apply_homography(people2, H2)
+    # 후면 Homography
+    fig1, ax1 = plt.subplots(figsize=(10, 8))
+    ax1.scatter(transformed_pts1[:, 0], transformed_pts1[:, 1], color='red', label="Cam1 (back)", alpha=0.6)
+    ax1.set_title("Back Homography")
+    ax1.grid(True)
+    ax1.set_aspect('auto')
+    add_seat_boxes(ax1)
+    plt.tight_layout()
+    rotated_back = render_rotated_plot(fig1, "temp_back.png", cv2.ROTATE_90_CLOCKWISE)
 
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-    axes[0].imshow(cv2.cvtColor(img1_viz, cv2.COLOR_BGR2RGB))
-    axes[0].set_title(f"Side Frame {i} - YOLO Detected")
-    axes[0].axis("off")
-    
-    axes[1].imshow(cv2.cvtColor(img2_viz, cv2.COLOR_BGR2RGB))
-    axes[1].set_title(f"Back Frame {i} - YOLO Detected")
-    axes[1].axis("off")
-    
-    axes[2].scatter(transformed_pts1[:, 0], transformed_pts1[:, 1], color='red', label="Transformed Cam1 (side)", alpha=0.6)
-    axes[2].scatter(transformed_pts2[:, 0], transformed_pts2[:, 1], color='blue', label="Transformed Cam2-1 (back)", alpha=0.6)
-    axes[2].set_xlabel("X-axis")
-    axes[2].set_ylabel("Y-axis")
-    axes[2].set_title("Homography 2D Coordinates")
+    cv2.namedWindow("Back Homography Rotated", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("Back Homography Rotated", 600, 800)
+    cv2.imshow("Back Homography Rotated", rotated_back)
+    cv2.moveWindow("Back Homography Rotated", 700, 0)
 
-    # ✅ 좌석 박스 추가 (0,0 기준 앞쪽 30 공백 후 시작)
-    seat_width = 75  # 좌석 가로 크기
-    seat_height = 50  # 좌석 세로 크기
-    seat_start_x = 30 # 앞쪽 30 공백 유지
-    seat_start_y = 0   # 좌석 시작 위치
-    
-    # 기존 좌석 배열 수정
-    for row in range(2):  # 총 2줄
-        if row == 0:
-            num_seats = 4  # 위 줄에 4개
-        else:
-            num_seats = 6  # 아래 줄에 6개
-        for col in range(num_seats):
-            x = seat_start_x + col * seat_width
-            y = seat_start_y + row * seat_height
-            rect = plt.Rectangle((x, y), seat_width, seat_height, fill=False, edgecolor='gray', linestyle='--', linewidth=1.5)
-            axes[2].add_patch(rect)
+    # 전면 YOLO
+    cv2.namedWindow("Front - YOLO", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("Front - YOLO", 640, 640)
+    cv2.imshow("Front - YOLO", img2_viz)
+    cv2.moveWindow("Front - YOLO", 1400, 0)
 
-    # ✅ 추가된 좌석 (Y=240에서 시작, 3, 4번째 좌석)
-    extra_seat_y = 190  # 새로운 좌석의 Y 시작 값
-    extra_seat_x_1 = seat_start_x + 2 * seat_width  # 3번째 좌석 위치
-    extra_seat_x_2 = seat_start_x + 3 * seat_width  # 4번째 좌석 위치
-    
-    rect1 = plt.Rectangle((extra_seat_x_1, extra_seat_y), seat_width, seat_height, fill=False, edgecolor='gray', linestyle='--', linewidth=1.5)
-    rect2 = plt.Rectangle((extra_seat_x_2, extra_seat_y), seat_width, seat_height, fill=False, edgecolor='gray', linestyle='--', linewidth=1.5)
-    
-    axes[2].add_patch(rect1)
-    axes[2].add_patch(rect2)
+    # 전면 Homography
+    fig2, ax2 = plt.subplots(figsize=(10, 8))
+    ax2.scatter(transformed_pts2[:, 0], transformed_pts2[:, 1], color='blue', label="Cam2 (front)", alpha=0.6)
+    ax2.set_title("Front Homography")
+    ax2.grid(True)
+    ax2.set_aspect('auto')
+    add_seat_boxes(ax2)
+    plt.tight_layout()
+    rotated_front = render_rotated_plot(fig2, "temp_front.png", cv2.ROTATE_90_COUNTERCLOCKWISE)
+    cv2.namedWindow("Front Homography Rotated", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("Front Homography Rotated", 600, 800)
+    cv2.imshow("Front Homography Rotated", rotated_front)
+    cv2.moveWindow("Front Homography Rotated", 2100, 0)
 
-    axes[2].legend()
-    axes[2].grid(True)
-    
-    plt.show()
-    
+    # waitKey & 종료
     key = cv2.waitKey(0)
+    cv2.destroyAllWindows()
     if key == ord('q'):
         break
 
