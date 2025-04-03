@@ -92,7 +92,29 @@ def generate_seat_boxes():
 def rotate_for_display(points):
     return np.array([[y, 550 - x] for x, y in points])
 
+def is_person_in_seat(person, seat_box):
+    x, y, w, h = seat_box
+    corners = np.array([[x, y], [x + w, y], [x + w, y + h], [x, y + h]])
+    rotated = rotate_for_display(corners)
+    x_coords = rotated[:, 0]
+    y_coords = rotated[:, 1]
+    return (x_coords.min() <= person[0] <= x_coords.max()) and (y_coords.min() <= person[1] <= y_coords.max())
+
+stop_loop = False
+
+def on_key(event):
+    global stop_loop
+    if event.key == 'q':
+        print("👋 종료합니다.")
+        stop_loop = True
+        plt.close('all')
+    else:
+        plt.close('all')
+
+
 for i in range(num_frames):
+    if stop_loop:
+        break
     print(f"\n🟢 현재 프레임: {i}/{num_frames - 1}")
 
     img1 = side_images[i]
@@ -114,7 +136,7 @@ for i in range(num_frames):
     fig = plt.figure(figsize=(12, 14))
 
     ax1 = plt.subplot2grid((4, 4), (0, 0), colspan=3, rowspan=2)
-    ax1.imshow(cv2.cvtColor(img1_viz, cv2.COLOR_BGR2RGB) , aspect='auto')
+    ax1.imshow(cv2.cvtColor(img1_viz, cv2.COLOR_BGR2RGB), aspect='auto')
     ax1.set_title("Back - YOLO")
     ax1.axis("off")
 
@@ -139,16 +161,28 @@ for i in range(num_frames):
     ax4.invert_yaxis()
     ax4.grid(False)
 
-    for ax in [ax3, ax4]:
+    for ax, people in zip([ax3, ax4], [rotated_people1, rotated_people2]):
         for (x, y, w, h) in generate_seat_boxes():
             corners = np.array([[x, y], [x + w, y], [x + w, y + h], [x, y + h]])
             rotated = rotate_for_display(corners)
-            patch = plt.Polygon(rotated, fill=False, edgecolor='gray', linestyle='--', linewidth=1.5)
+            occupied = any(is_person_in_seat(p, (x, y, w, h)) for p in people)
+
+            if occupied:
+                patch = plt.Polygon(rotated,
+                                    fill=True,
+                                    edgecolor='gray',
+                                    facecolor='red',
+                                    alpha=0.3,
+                                    linestyle='--',
+                                    linewidth=1.5)
+            else:
+                patch = plt.Polygon(rotated,
+                                    fill=False,
+                                    edgecolor='gray',
+                                    linestyle='--',
+                                    linewidth=1.5)
             ax.add_patch(patch)
 
+    fig.canvas.mpl_connect('key_press_event', on_key)
     plt.tight_layout()
     plt.show()
-
-    key = cv2.waitKey(1)
-    if key == ord('q'):
-        break
