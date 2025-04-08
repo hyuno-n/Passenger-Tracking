@@ -1,12 +1,14 @@
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout,
-    QHBoxLayout, QGridLayout, QSpacerItem, QSizePolicy
+    QHBoxLayout, QGridLayout, QSpacerItem, QSizePolicy, QFileDialog
 )
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt
 import sys
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib.pyplot as plt
+import os
+import json
 
 class SeatButton(QPushButton):
     def __init__(self, seat_id, parent=None):
@@ -42,10 +44,17 @@ class SeatEvaluationApp(QWidget):
 
         self.user_results = {}  # 사용자 판단 결과 저장용
 
+        self.image_folder = None
+        self.image_files = []
+        self.all_results = {}  # frame → seat_id → bool
+
         self.init_ui()
 
     def init_ui(self):
         layout = QVBoxLayout()
+        self.select_folder_btn = QPushButton("📂 폴더 선택")
+        self.select_folder_btn.clicked.connect(self.select_folder)
+        layout.addWidget(self.select_folder_btn)
 
         # 어안 이미지 영역
         self.image_label = QLabel("Fisheye Image")
@@ -94,7 +103,7 @@ class SeatEvaluationApp(QWidget):
         self.next_btn = QPushButton("Next Frame ▶")
 
         self.prev_btn.clicked.connect(self.prev_frame)
-        self.save_btn.clicked.connect(self.collect_user_input)
+        self.save_btn.clicked.connect(self.save_all_results)
         self.reset_btn.clicked.connect(self.reset_selection)
         self.next_btn.clicked.connect(self.next_frame)
 
@@ -130,9 +139,10 @@ class SeatEvaluationApp(QWidget):
         self.canvas.draw()
 
     def collect_user_input(self):
-        for seat_id, btn in self.seat_buttons.items():
-            self.user_results[seat_id] = btn.is_selected
-        print(f"사용자 판단 결과: {self.user_results}")
+        current_file = self.image_files[self.current_frame] if self.image_files else f"frame_{self.current_frame:04d}.jpg"
+        seat_states = {seat_id: btn.is_selected for seat_id, btn in self.seat_buttons.items()}
+        self.all_results[current_file] = seat_states
+        print(f"[{current_file}] 사용자 판단 결과: {seat_states}")
 
     def reset_selection(self):
         for btn in self.seat_buttons.values():
@@ -141,13 +151,46 @@ class SeatEvaluationApp(QWidget):
 
     def next_frame(self):
         self.collect_user_input()
-        self.current_frame += 1
-        print(f"프레임 {self.current_frame}로 이동")
+        if self.current_frame < len(self.image_files) - 1:
+            self.current_frame += 1
+            self.load_frame_image()
 
     def prev_frame(self):
         self.collect_user_input()
-        self.current_frame = max(0, self.current_frame - 1)
-        print(f"프레임 {self.current_frame}로 이동")
+        if self.current_frame > 0:
+            self.current_frame -= 1
+            self.load_frame_image()
+
+
+    def select_folder(self):
+        folder = QFileDialog.getExistingDirectory(self, "이미지 폴더 선택")
+        if folder:
+            self.image_folder = folder
+            self.image_files = sorted([
+                f for f in os.listdir(folder)
+                if f.lower().endswith(('.jpg', '.png', '.jpeg'))
+            ])
+            self.current_frame = 0
+            print(f"선택된 폴더: {folder}")
+            print(f"{len(self.image_files)}개의 이미지 로딩됨.")
+            self.load_frame_image()
+
+    def load_frame_image(self):
+        if self.image_folder and self.image_files:
+            frame_file = self.image_files[self.current_frame]
+            path = os.path.join(self.image_folder, frame_file)
+            self.image_label.setPixmap(QPixmap(path).scaledToWidth(600))
+
+    def save_all_results(self):
+        if not self.image_folder:
+            print("폴더를 먼저 선택하세요.")
+            return
+        save_path = os.path.join(self.image_folder, "user_labels.json")
+        with open(save_path, 'w') as f:
+            json.dump(self.all_results, f, indent=2)
+        print(f"결과가 {save_path}에 저장되었습니다.")
+
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
