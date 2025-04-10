@@ -7,7 +7,6 @@ from ultralytics import YOLO
 from tqdm import tqdm
 from collections import defaultdict
 import matplotlib.pyplot as plt
-import seaborn as sns
 
 # YOLO 모델 로드
 model = YOLO("head.pt")
@@ -16,25 +15,37 @@ model = YOLO("head.pt")
 seat_width, seat_height = 75, 50
 seat_start_x = 30
 seats = []
-for row in range(2):
-    num_seats = 7 if row == 0 else 5
-    for col in range(num_seats):
-        x = seat_start_x + col * seat_width
-        y = row * seat_height
-        seats.append((x, y))
-seats += [(seat_start_x + i * seat_width, 190) for i in range(2, 5)]  # 13~15
+
+# 앞줄 (좌석 1~7, 6~7은 y + 20)
+for col in range(7):
+    x = seat_start_x + col * seat_width
+    y = 0 if col < 5 else 20
+    seats.append((x, y))
+
+# 뒷줄 (좌석 8~12)
+for col in range(5):
+    x = seat_start_x + col * seat_width
+    y = 50
+    seats.append((x, y))
+
+# 후면 좌석 (13~15), 14~15 사이 여백 포함
+rear_offsets = [2 * seat_width, 3 * seat_width + 10, 4 * seat_width + 20]
+for offset in rear_offsets:
+    x = seat_start_x + offset
+    y = 190
+    seats.append((x, y))
 
 # Homography 행렬 + padding (각도별)
 homographies = {
     "view_40": (np.array([[ 3.39218386e-01, -2.61378020e+00, -2.41384154e+02],
-                          [ 1.23077482e+00, -1.09011484e+00, -8.55740148e+02],
-                          [ 8.33939613e-04, -9.20352638e-03,  1.00000000e+00]]), (500, 150)),
-    "view_0":  (np.array([[-2.81607724e-01,  1.04586005e-01,  5.69682600e+02],
-                          [ 5.25878026e-02,  3.67465386e-01, -8.36607016e+01],
-                          [ 2.01001615e-04,  2.72166839e-04,  1.00000000e+00]]), (300, 150)),
-    "view_-40":(np.array([[-6.29676468e-01, -5.20759458e+00,  1.44638387e+03],
-                          [-1.89307888e+00, -1.34889107e+00,  1.32959556e+03],
-                          [-1.56119349e-03, -1.07253880e-02,  1.00000000e+00]]), (300, 150))
+                           [ 1.23077482e+00, -1.09011484e+00, -8.55740148e+02],
+                           [ 8.33939613e-04, -9.20352638e-03,  1.00000000e+00]]), (500, 150)),
+    "view_0": (np.array([[ -1.84509850e-01,  8.03468203e-02,  5.25063189e+02],
+                          [ 4.81525443e-02,  3.72219168e-01, -8.28806408e+01],
+                          [ 2.24470429e-04,  2.05735101e-04,  1.00000000e+00]]), (300, 150)),
+    "view_-40": (np.array([[ -5.95639903e-01, -4.92610298e+00,  1.36820095e+03],
+                            [-1.89307888e+00, -1.34889107e+00,  1.32959556e+03],
+                            [-1.56119349e-03, -1.07253880e-02,  1.00000000e+00]]), (300, 150)),
 }
 
 REAL_AREA = np.array([[0, 0], [0, 240], [550, 240], [550, 0]], dtype=np.float32)
@@ -74,29 +85,45 @@ def predict_occupancy(people):
                 occupied[idx] = 1
     return occupied
 
-def plot_seat_confusion(seat_stats):
-    metrics = ["TP", "FP", "FN", "TN"]
+def visualize_seat_detection_rate(seat_stats):
+
+    # 전체 TP/FP/FN/TN 출력
+    total = defaultdict(int)
+    for sid in seat_ids:
+        for k in seat_stats[sid]:
+            total[k] += seat_stats[sid][k]
+
+    print("📊 Overall Evaluation Results")
+    print(f"True Positive (TP): {total['TP']}")
+    print(f"False Positive (FP): {total['FP']}")
+    print(f"False Negative (FN): {total['FN']}")
+    print(f"True Negative (TN): {total['TN']}")
     seat_labels = [f"S{i}" for i in range(1, 16)]
+    acc = []
+    for s in seat_labels:
+        tp = seat_stats[s]["TP"]
+        fn = seat_stats[s]["FN"]
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+        acc.append(recall)
 
-    data = {m: [seat_stats[s][m] for s in seat_labels] for m in metrics}
-
-    fig, axes = plt.subplots(1, 4, figsize=(20, 4))
-    for i, metric in enumerate(metrics):
-        sns.heatmap(
-            np.array(data[metric]).reshape(1, -1),
-            annot=True, fmt="d", cmap="YlGnBu",
-            xticklabels=seat_labels, yticklabels=[metric],
-            ax=axes[i], cbar=False
-        )
-        axes[i].set_title(f"{metric} per seat")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.set_xlim(0, 550)
+    ax.set_ylim(0, 240)
+    ax.invert_yaxis()
+    ax.invert_xaxis()
+    ax.set_title("Seat-wise Detection Recall")
+    for i, (x, y) in enumerate(seats):
+        color = plt.cm.Reds(acc[i])  # 강도에 따라 빨간색 음영
+        rect = plt.Rectangle((x, y), seat_width, seat_height, facecolor=color, edgecolor='black')
+        ax.add_patch(rect)
+        ax.text(x + seat_width/2, y + seat_height/2, f"{seat_labels[i]}\n{acc[i]*100:.1f}%",
+                ha='center', va='center', fontsize=9, color='white' if acc[i] > 0.5 else 'black')
     plt.tight_layout()
     plt.show()
 
 # ========= 평가 루프 =========
 base_dir = "data/scen_output"
 label_dir = "data/scen_label"
-
-total = defaultdict(int)
 
 for scen in sorted(os.listdir(base_dir)):
     if not scen.startswith("scen"):
@@ -110,15 +137,14 @@ for scen in sorted(os.listdir(base_dir)):
     with open(label_path, "r") as f:
         label_data = json.load(f)
 
-    # 각 뷰 경로
     view_paths = {
         view: os.path.join(base_dir, scen, view)
         for view in ["view_-40", "view_0", "view_40"]
     }
 
-    # 파일 목록
     filenames = sorted([f for f in os.listdir(view_paths["view_0"]) if f.endswith(".jpg")], key=extract_number)
-    seat_stats = {sid: {"TP":0, "FP":0, "FN":0, "TN":0} for sid in seat_ids}
+    seat_stats = {sid: {"TP": 0, "FP": 0, "FN": 0, "TN": 0} for sid in seat_ids}
+
     for fname in tqdm(filenames, desc=f"🎞 {scen}"):
         pred_people = []
         for view, path in view_paths.items():
@@ -131,7 +157,6 @@ for scen in sorted(os.listdir(base_dir)):
 
         pred_vector = predict_occupancy(pred_people)
 
-        # Ground Truth
         if fname not in label_data:
             continue
         gt_dict = label_data[fname]
@@ -146,11 +171,5 @@ for scen in sorted(os.listdir(base_dir)):
                 seat_stats[sid]["FP"] += 1
             else:
                 seat_stats[sid]["TN"] += 1
-        plot_seat_confusion(seat_stats)
 
-# ========= 결과 출력 =========
-print("\n📊 좌석 점유 평가 결과")
-print(f"True Positive (TP): {total['TP']}")
-print(f"False Positive (FP): {total['FP']}")
-print(f"False Negative (FN): {total['FN']}")
-print(f"True Negative (TN): {total['TN']}")
+    visualize_seat_detection_rate(seat_stats)
