@@ -8,9 +8,9 @@ select_mode = True  # 점 클릭 여부
 
 # 현실 버스 배치도 좌표 (m 단위)
 real_world_coords = [
-    np.array([[350, 0], [350, 240], [555, 240], [555, 0]], dtype=np.float32), # 후면
-    np.array([[255, 0], [255, 240], [425, 240], [425, 0]], dtype=np.float32), # 중앙
-    np.array([[0, 0], [0, 240], [350, 240], [350, 0]], dtype=np.float32)    # 전면    
+    np.array([[330, 0], [330, 240], [555, 240], [555, 0]], dtype=np.float32), # 후면
+    np.array([[255, 0], [255, 240], [405, 240], [405, 0]], dtype=np.float32), # 중앙
+    np.array([[0, 0], [0, 240], [330, 240], [330, 0]], dtype=np.float32)    # 전면    
 ]
 
 def add_padding(image, padding_x=150, padding_y=150, color=(0, 0, 0)):
@@ -73,9 +73,9 @@ predefined_points3 = np.array([
 ], dtype=np.float32)  # 예시 값, 실제 이미지에 맞게 수정
 
 # 이미지 로드
-img1 = cv2.imread("frame_rear.jpg")
-img2 = cv2.imread("frame_center.jpg")
-img3 = cv2.imread("frame_front.jpg")  # 추가된 이미지
+img1 = cv2.imread("view2_rear.jpg")
+img2 = cv2.imread("view2_center.jpg")
+img3 = cv2.imread("view2_front.jpg")  # 추가된 이미지
 
 # 패딩 추가
 img1_padded, _, _ = add_padding(img1, padding_x=500, padding_y=150)

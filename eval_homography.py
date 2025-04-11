@@ -9,7 +9,7 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 
 # YOLO 모델 로드
-model = YOLO("head.pt")
+model = YOLO("runs/detect/head_finetuned2/weights/best.pt")
 
 # 📌 좌석 정의 (순서 중요: S1 ~ S15)
 seat_width, seat_height = 75, 50
@@ -36,7 +36,7 @@ for offset in rear_offsets:
     seats.append((x, y))
 
 # Homography 행렬 + padding (각도별)
-homographies = {
+homographies_default = {
     "view_40": (np.array([[ 3.39218386e-01, -2.61378020e+00, -2.41384154e+02],
                            [ 1.23077482e+00, -1.09011484e+00, -8.55740148e+02],
                            [ 8.33939613e-04, -9.20352638e-03,  1.00000000e+00]]), (500, 150)),
@@ -46,6 +46,18 @@ homographies = {
     "view_-40": (np.array([[ -5.95639903e-01, -4.92610298e+00,  1.36820095e+03],
                             [-1.89307888e+00, -1.34889107e+00,  1.32959556e+03],
                             [-1.56119349e-03, -1.07253880e-02,  1.00000000e+00]]), (300, 150)),
+}
+
+homographies_alt = {
+    "view_40": (np.array([[-1.46210375e+00,  8.60075220e+00,  2.73692268e+03],
+                           [-5.29493124e+00,  4.18599281e+00,  4.20388569e+03],
+                           [-4.21451893e-03,  3.45669963e-02,  1.00000000e+00]]), (500, 150)),
+    "view_0": (np.array([[-2.54814779e-01,  3.02230300e-02,  4.89775051e+02],
+                          [-5.03690736e-04,  3.02718132e-01, -4.52354576e+01],
+                          [-1.52079224e-05,  7.02600897e-05,  1.00000000e+00]]), (300, 150)),
+    "view_-40": (np.array( [[-2.42508598e-01, -2.06890148e+00,  7.57801477e+02],
+                            [-7.87968226e-01, -5.71032036e-01,  6.23032341e+02],
+                            [-6.41045657e-04, -4.78356023e-03,  1.00000000e+00]]), (300, 150)),
 }
 
 REAL_AREA = np.array([[0, 0], [0, 240], [550, 240], [550, 0]], dtype=np.float32)
@@ -86,7 +98,6 @@ def predict_occupancy(people):
     return occupied
 
 def visualize_seat_detection_rate(seat_stats):
-
     # 전체 TP/FP/FN/TN 출력
     total = defaultdict(int)
     for sid in seat_ids:
@@ -98,6 +109,7 @@ def visualize_seat_detection_rate(seat_stats):
     print(f"False Positive (FP): {total['FP']}")
     print(f"False Negative (FN): {total['FN']}")
     print(f"True Negative (TN): {total['TN']}")
+
     seat_labels = [f"S{i}" for i in range(1, 16)]
     acc = []
     for s in seat_labels:
@@ -110,7 +122,6 @@ def visualize_seat_detection_rate(seat_stats):
     ax.set_xlim(0, 550)
     ax.set_ylim(0, 240)
     ax.invert_yaxis()
-    ax.invert_xaxis()
     ax.set_title("Seat-wise Detection Recall")
     for i, (x, y) in enumerate(seats):
         color = plt.cm.Reds(acc[i])  # 강도에 따라 빨간색 음영
@@ -118,14 +129,14 @@ def visualize_seat_detection_rate(seat_stats):
         ax.add_patch(rect)
         ax.text(x + seat_width/2, y + seat_height/2, f"{seat_labels[i]}\n{acc[i]*100:.1f}%",
                 ha='center', va='center', fontsize=9, color='white' if acc[i] > 0.5 else 'black')
-    plt.tight_layout()
-    plt.show()
+    # plt.tight_layout()
+    # plt.show()
 
 # ========= 평가 루프 =========
 base_dir = "data/scen_output"
 label_dir = "data/scen_label"
 
-for scen in sorted(os.listdir(base_dir)):
+for scen in sorted(os.listdir(base_dir), key=lambda s: int(re.search(r'scen(\d+)', s).group(1))):
     if not scen.startswith("scen"):
         continue
 
@@ -152,7 +163,8 @@ for scen in sorted(os.listdir(base_dir)):
             if not os.path.isfile(img_path):
                 continue
             img = cv2.imread(img_path)
-            H, pad = homographies[view]
+            scenario_index = int(re.search(r'scen(\d+)', scen).group(1))
+            H, pad = (homographies_alt if scenario_index >= 7 else homographies_default)[view]
             pred_people += detect_heads(img, H, pad)
 
         pred_vector = predict_occupancy(pred_people)

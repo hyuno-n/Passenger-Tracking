@@ -171,6 +171,7 @@ class SeatEvaluationApp(QWidget):
                 if f.lower().endswith(('.jpg', '.png', '.jpeg'))
             ])
             self.current_frame = 0
+            self.all_results = {} 
             print(f"선택된 폴더: {folder}")
             print(f"{len(self.image_files)}개의 이미지 로딩됨.")
             self.load_frame_image()
@@ -185,7 +186,7 @@ class SeatEvaluationApp(QWidget):
         if not self.image_folder:
             print("폴더를 먼저 선택하세요.")
             return
-        save_path = os.path.join(self.image_folder, "user_labels.json")
+        save_path = os.path.join(self.image_folder, f"{self.image_folder}.json")
         with open(save_path, 'w') as f:
             json.dump(self.all_results, f, indent=2)
         print(f"결과가 {save_path}에 저장되었습니다.")
