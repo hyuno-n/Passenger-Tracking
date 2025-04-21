@@ -1,18 +1,20 @@
 from ultralytics import YOLO
 
-# 🔧 모델 로드 (기존 모델 사용)
+# 기존 pretrained head 모델 로드
 model = YOLO("head.pt")
 
-# 🔁 학습 시작
+# Freeze 전략 적용 학습
 model.train(
-    data="dataset/head_data.yaml",  # 데이터셋 yaml 경로
-    epochs=100,                      # 에폭 수
-    batch=16,                       # 배치 크기
-    imgsz=640,                      # 입력 이미지 크기
-    name="head_finetuned",         # 저장 폴더 이름
-    lr0=0.001,                      # 초기 학습률
-    workers=4,                      # 데이터 로딩 워커 수
-    device=0                        # GPU ID (CPU는 'cpu')
+    data="bus_dataset/head_data.yaml",
+    epochs=100,             
+    batch=16,
+    imgsz=640,
+    lr0=0.0005,             # 느리게 fine-tune
+    name="add_tire_finetune_freeze",  # 모델 이름
+    freeze=10,              # 앞쪽 10개 레이어 freeze
+    patience=20,            # early stopping
+    cos_lr=True,            # cosine decay
+    device=0                # GPU 사용
 )
 
-print("✅ 학습 완료! 결과: runs/detect/head_finetuned/")
+print("✅ Freeze 기반 학습 완료! 모델: runs/detect/add_tire_finetune_freeze/weights/best.pt")
