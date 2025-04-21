@@ -5,51 +5,46 @@ from ultralytics import YOLO
 
 def draw_seat_boxes_on_image(image, H_inv, padding, color=(0, 255, 255), seat_width=75, seat_height=50):
     seat_start_x = 30
-    seat_start_y = 0
     overlay = image.copy()
 
-    def project_and_draw_box(seat_box):
-        projected = cv2.perspectiveTransform(np.array([seat_box], dtype=np.float32), H_inv)[0]
-        # 패딩 보정
+    # 📌 좌석 정의 (순서 중요: S1 ~ S15)
+    seats = []
+
+    # 앞줄 (좌석 1~7, 6~7은 y + 20)
+    for col in range(7):
+        x = seat_start_x + col * seat_width
+        y = 0 if col < 5 else 20
+        seats.append((x, y))
+
+    # 뒷줄 (좌석 8~12)
+    for col in range(5):
+        x = seat_start_x + col * seat_width
+        y = 50
+        seats.append((x, y))
+
+    # 후면 좌석 (13~15), 14~15 사이 여백 포함
+    rear_offsets = [
+        (2 * seat_width, 190),               # 좌석 13
+        (3 * seat_width + 10, 170),          # 좌석 14 (y=170)
+        (4 * seat_width + 20, 170)           # 좌석 15 (y=170)
+    ]
+    for offset_x, y in rear_offsets:
+        x = seat_start_x + offset_x
+        seats.append((x, y))
+
+    # 📐 좌석 박스를 투영하고 그리기
+    for (x, y) in seats:
+        box = np.array([[
+            [x, y],
+            [x + seat_width, y],
+            [x + seat_width, y + seat_height],
+            [x, y + seat_height]
+        ]], dtype=np.float32)
+
+        projected = cv2.perspectiveTransform(box, H_inv)[0]
         projected -= np.array(padding, dtype=np.float32)
         projected = projected.astype(int)
         cv2.polylines(overlay, [projected], isClosed=True, color=color, thickness=2)
-
-    # 🔹 아래줄: 7개
-    for col in range(4):
-        x = seat_start_x + col * seat_width
-        y = seat_start_y + seat_height  # 아래 줄 (row 1)
-        box = [
-            [x, y],
-            [x + seat_width, y],
-            [x + seat_width, y + seat_height],
-            [x, y + seat_height]
-        ]
-        project_and_draw_box(box)
-
-    # 🔹 위줄: 5개
-    for col in range(4):
-        x = seat_start_x + col * seat_width
-        y = seat_start_y  # 위 줄 (row 0)
-        box = [
-            [x, y],
-            [x + seat_width, y],
-            [x + seat_width, y + seat_height],
-            [x, y + seat_height]
-        ]
-        project_and_draw_box(box)
-
-    # 🔹 추가 좌석: y=190
-    extra_y = 190
-    for col in [2, 3, 3]:  # 3번 좌석이 중복되었지만 그대로 유지
-        x = seat_start_x + col * seat_width
-        box = [
-            [x, extra_y],
-            [x + seat_width, extra_y],
-            [x + seat_width, extra_y + seat_height],
-            [x, extra_y + seat_height]
-        ]
-        project_and_draw_box(box)
 
     return overlay
 
@@ -57,35 +52,38 @@ def draw_seat_boxes_on_image(image, H_inv, padding, color=(0, 255, 255), seat_wi
 model = YOLO("head.pt")
 
 # 📌 이미지 로드
-image1_path = "./image1.jpg"  # Cam1 (측면)
-image2_path = "./image2.jpg"  # Cam2-1 (후면)
+image1_path = "./frame_rear.jpg"  # Cam1 (측면)
+image2_path = "./frame_center.jpg"  # Cam2-1 (후면)
+imag3_path = "./frame_front.jpg"  # Cam2-2 (전면)
 
 img1 = cv2.imread(image1_path)
 img2 = cv2.imread(image2_path)
+img3 = cv2.imread(imag3_path)
 
 if img1 is None or img2 is None:
     print("❌ 이미지 로드 실패")
     exit()
 
 # 패딩 추가
-padding1 = (700,500)
+padding1 = (500,150)
 padding2 = (300,150)
+padding3 = (300,150)
 
-# 📌 Homography 행렬
-H1 = np.array([
-    [ 2.85314111e-01, -3.69907242e-01, -1.28672159e+02],
-    [-4.28170215e-02, -7.87077601e-01,  5.67835561e+02],
-    [-2.23331197e-04, -2.08590859e-03,  1.00000000e+00]
-])
-
-H2 = np.array([
-    [-6.83579819e-01, -6.01078807e+00,  1.51252642e+03],
-    [-2.64736625e+00, -1.58683687e+00,  1.62782158e+03],
-    [-1.69854645e-03, -1.41089059e-02,  1.00000000e+00]
-])
+# 📌 Homography Matrix (Image 1): # 후면(angle 40) padding (500,150)
+H1 = np.array([[ 3.39218386e-01, -2.61378020e+00, -2.41384154e+02],
+               [ 1.23077482e+00, -1.09011484e+00, -8.55740148e+02],
+               [ 8.33939613e-04, -9.20352638e-03,  1.00000000e+00]])
+# 📌 Homography Matrix (Image 2): # 중앙(angle 0) padding (300,150)
+H2 = np.array([[ -1.84509850e-01,  8.03468203e-02,  5.25063189e+02],
+							[ 4.81525443e-02,  3.72219168e-01, -8.28806408e+01],
+							[ 2.24470429e-04,  2.05735101e-04,  1.00000000e+00]])
+# 📌 Homography Matrix (Image 3): # 전면(angle -40) padding (300,150)
+H3 = np.array([[ -5.95639903e-01, -4.92610298e+00,  1.36820095e+03],
+							[-1.89307888e+00, -1.34889107e+00,  1.32959556e+03],
+							[-1.56119349e-03, -1.07253880e-02,  1.00000000e+00]])
 
 # 현실 좌표 영역 정의 (0,0)-(550,240)
-REAL_AREA = np.array([[0, 0], [0, 240], [330, 240], [330, 0]], dtype=np.float32)
+REAL_AREA = np.array([[0, 0], [0, 240], [550, 240], [550, 0]], dtype=np.float32)
 
 def inverse_homography(points, H):
     H_inv = np.linalg.inv(H)
@@ -120,69 +118,84 @@ def apply_homography(points, H):
 # 감지 및 변환
 people1, img1_viz = detect_people_in_real_area(img1, padding1, H1)
 people2, img2_viz = detect_people_in_real_area(img2, padding2, H2)
+people3, img3_viz = detect_people_in_real_area(img3, padding3, H3)
 
 transformed_pts1 = apply_homography(people1, H1)
 transformed_pts2 = apply_homography(people2, H2)
+transformed_pts3 = apply_homography(people3, H3)
 
-def visualize_results(img1_viz, img2_viz, pts1, pts2):
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+def visualize_results(img1_viz, img2_viz, img3_viz, pts1, pts2, pts3):
+    fig, axes = plt.subplots(1, 4, figsize=(15, 5))
     axes[0].imshow(cv2.cvtColor(img1_viz, cv2.COLOR_BGR2RGB))
-    axes[0].set_title("Image 1 - YOLO Detected (side)")
+    axes[0].set_title("Image 1 - YOLO Detected (rear)")
     axes[0].axis("off")
 
     axes[1].imshow(cv2.cvtColor(img2_viz, cv2.COLOR_BGR2RGB))
-    axes[1].set_title("Image 2 - YOLO Detected (back)")
+    axes[1].set_title("Image 2 - YOLO Detected (center)")
     axes[1].axis("off")
 
-    axes[2].scatter(pts1[:, 0], pts1[:, 1], color='red', label="Transformed Cam1 (side)", alpha=0.6)
-    axes[2].scatter(pts2[:, 0], pts2[:, 1], color='blue', label="Transformed Cam2-1 (back)", alpha=0.6)
-    axes[2].set_xlabel("X-axis")
-    axes[2].set_ylabel("Y-axis")
-    axes[2].set_title("Homography 2D Coordinates")
+    axes[2].imshow(cv2.cvtColor(img3_viz, cv2.COLOR_BGR2RGB))
+    axes[2].set_title("Image 3 - YOLO Detected (front)")
+    axes[2].axis("off")
+
+    axes[3].scatter(pts1[:, 0], pts1[:, 1], color='red', label="Transformed Cam (rear)", alpha=0.6)
+    axes[3].scatter(pts2[:, 0], pts2[:, 1], color='blue', label="Transformed Cam (center)", alpha=0.6)
+    axes[3].scatter(pts3[:, 0], pts3[:, 1], color='green', label="Transformed Cam (front)", alpha=0.6)
+    axes[3].set_xlabel("X-axis")
+    axes[3].set_ylabel("Y-axis")
+    axes[3].set_title("Homography 2D Coordinates")
 
     # 좌석 시각화
     seat_width = 75
     seat_height = 50
     seat_start_x = 30
-    seat_start_y = 0
-    for row in range(2):  # 총 2줄
-        if row == 1:
-            num_seats = 4  # 위 줄에 4개
-        else:
-            num_seats = 4  # 아래 줄에 6개
-        for col in range(num_seats):
-            x = seat_start_x + col * seat_width
-            y = seat_start_y + row * seat_height
-            rect = plt.Rectangle((x, y), seat_width, seat_height, fill=False, edgecolor='gray', linestyle='--', linewidth=1.5)
-            axes[2].add_patch(rect)
 
-    extra_seat_y = 190
-    extra_seat_x_1 = seat_start_x + 2 * seat_width
-    extra_seat_x_2 = seat_start_x + 3 * seat_width
-    # extra_seat_x_3 = seat_start_x + 3 * seat_width
-    rect1 = plt.Rectangle((extra_seat_x_1, extra_seat_y), seat_width, seat_height, fill=False, edgecolor='gray', linestyle='--', linewidth=1.5)
-    rect2 = plt.Rectangle((extra_seat_x_2, extra_seat_y), seat_width, seat_height, fill=False, edgecolor='gray', linestyle='--', linewidth=1.5)
-    # rect3 = plt.Rectangle((extra_seat_x_3, extra_seat_y), seat_width, seat_height, fill=False, edgecolor='gray', linestyle='--', linewidth=1.5)
-    axes[2].add_patch(rect1)
-    axes[2].add_patch(rect2)
-    # axes[2].add_patch(rect3)
+    # 좌석 좌표 리스트 정의
+    seat_positions = []
 
-    axes[2].legend()
-    axes[2].grid(True)
+    # 앞줄 (좌석 1~7, 6~7은 y + 20)
+    for col in range(7):
+        x = seat_start_x + col * seat_width
+        y = 0 if col < 5 else 20
+        seat_positions.append((x, y))
+
+    # 뒷줄 (좌석 8~12)
+    for col in range(5):
+        x = seat_start_x + col * seat_width
+        y = 50
+        seat_positions.append((x, y))
+
+    # 후면 좌석 (13~15), 14~15는 y=170
+    rear_offsets = [2 * seat_width, 3 * seat_width + 10, 4 * seat_width + 20]
+    rear_ys = [190, 170, 170]
+    for offset, y in zip(rear_offsets, rear_ys):
+        x = seat_start_x + offset
+        seat_positions.append((x, y))
+
+    # 시각화
+    for (x, y) in seat_positions:
+        rect = plt.Rectangle((x, y), seat_width, seat_height, fill=False, edgecolor='gray', linestyle='--', linewidth=1.5)
+        axes[3].add_patch(rect)
+
+    axes[3].legend()
+    axes[3].grid(True)
     plt.tight_layout()
     plt.show()
 
-# visualize_results(img1_viz, img2_viz, transformed_pts1, transformed_pts2)
+visualize_results(img1_viz, img2_viz, img3_viz ,transformed_pts1, transformed_pts2, transformed_pts3)
 # 역행렬 계산
 H1_inv = np.linalg.inv(H1)
 H2_inv = np.linalg.inv(H2)
+H3_inv = np.linalg.inv(H3)
 
 # 이미지에 좌석 박스 그리기 (패딩 보정 포함)
 img1_with_seats = draw_seat_boxes_on_image(img1.copy(), H1_inv, padding1)
 img2_with_seats = draw_seat_boxes_on_image(img2.copy(), H2_inv, padding2)
+img3_with_seats = draw_seat_boxes_on_image(img3.copy(), H3_inv, padding3)
 
 cv2.imshow("Cam1 with Seat Boxes", img1_with_seats)
 cv2.imshow("Cam2 with Seat Boxes", img2_with_seats)
+cv2.imshow("Cam3 with Seat Boxes", img3_with_seats)
 while True:
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
