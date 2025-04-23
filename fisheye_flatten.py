@@ -74,7 +74,7 @@ def apply_multi_view_flattening_flatfolder(base_dir):
     view_angles = [-40, 0, 40]
 
     for folder in sorted(os.listdir(base_dir)):
-        if not folder.startswith("scen"):
+        if not folder.startswith("scen2"):
             continue
 
         folder_path = os.path.join(base_dir, folder)
