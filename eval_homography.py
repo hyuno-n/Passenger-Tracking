@@ -9,7 +9,7 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 
 # YOLO 모델 로드
-model = YOLO("runs/detect/finetune_freeze/weights/best.pt")
+model = YOLO("runs/detect/add_tire_finetune_freeze/weights/best.pt")
 
 seat_width = 75
 seat_height = 50
@@ -118,7 +118,14 @@ def visualize_seat_detection_rate(seat_stats):
     print(f"False Positive (FP): {total['FP']}")
     print(f"False Negative (FN): {total['FN']}")
     print(f"True Negative (TN): {total['TN']}")
-
+    # ✅ 좌석별 지표 출력 + 수치 포함
+    print("\n📈 좌석별 성능 지표 (TP, FP, FN 포함):")
+    for sid, val in seat_stats.items():
+        tp, fp, fn, tn = val["TP"], val["FP"], val["FN"], val["TN"]
+        prec = tp / (tp + fp) if (tp + fp) else 0
+        rec = tp / (tp + fn) if (tp + fn) else 0
+        f1s = 2 * prec * rec / (prec + rec) if (prec + rec) else 0
+        print(f"{sid}: TP={tp}, FP={fp}, FN={fn}, TN={tn} → Precision={prec:.3f}, Recall={rec:.3f}, F1={f1s:.3f}")
     acc = []
     for sid in seat_ids:
         tp = seat_stats[sid]["TP"]
@@ -287,7 +294,7 @@ def evaluate_conf_range(model, base_dir, label_dir, seat_ids, apply_homography, 
 # ========= 평가 루프 =========
 base_dir = "data/scen_output"
 label_dir = "data/scen_label/center_camera"
-
+total_stats = {sid: {"TP": 0, "FP": 0, "FN": 0, "TN": 0} for sid in seat_ids}
 for scen in sorted(os.listdir(base_dir), key=lambda s: int(re.search(r'scen(\d+)', s).group(1))):
     if not scen.startswith("scen"):
         continue
@@ -307,6 +314,7 @@ for scen in sorted(os.listdir(base_dir), key=lambda s: int(re.search(r'scen(\d+)
 
     filenames = sorted([f for f in os.listdir(view_paths["view_0"]) if f.endswith(".jpg")], key=extract_number)
     seat_stats = {sid: {"TP": 0, "FP": 0, "FN": 0, "TN": 0} for sid in seat_ids}
+    
     fp_frames = defaultdict(list)
     fn_frames = defaultdict(list)
 
@@ -345,10 +353,33 @@ for scen in sorted(os.listdir(base_dir), key=lambda s: int(re.search(r'scen(\d+)
                         fp_frames[view].append(fp_path)
             else:
                 seat_stats[sid]["TN"] += 1
+    for sid in seat_ids:
+        for key in ["TP", "FP", "FN", "TN"]:
+            total_stats[sid][key] += seat_stats[sid][key]
 
-    visualize_seat_detection_rate(seat_stats)
-    show_fp_images(fp_frames, scenario_index)
-    show_fn_images(fn_frames, scenario_index)
+print("\n📊 전체 통합 결과:")
+TP = sum([v["TP"] for v in total_stats.values()])
+FP = sum([v["FP"] for v in total_stats.values()])
+FN = sum([v["FN"] for v in total_stats.values()])
+TN = sum([v["TN"] for v in total_stats.values()])
+
+precision = TP / (TP + FP) if (TP + FP) else 0
+recall = TP / (TP + FN) if (TP + FN) else 0
+f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0
+
+print(f"TP: {TP} | FP: {FP} | FN: {FN} | TN: {TN}")
+print(f"Precision: {precision:.3f} | Recall: {recall:.3f} | F1 Score: {f1:.3f}")
+
+print("\n📈 좌석별 통합 성능 지표:")
+for sid, val in total_stats.items():
+    tp, fp, fn, tn = val["TP"], val["FP"], val["FN"], val["TN"]
+    prec = tp / (tp + fp) if (tp + fp) else 0
+    rec = tp / (tp + fn) if (tp + fn) else 0
+    f1s = 2 * prec * rec / (prec + rec) if (prec + rec) else 0
+    print(f"{sid}: TP={tp}, FP={fp}, FN={fn}, TN={tn} → Precision={prec:.3f}, Recall={rec:.3f}, F1={f1s:.3f}")
+    # visualize_seat_detection_rate(seat_stats)
+    # show_fp_images(fp_frames, scenario_index)
+    # show_fn_images(fn_frames, scenario_index)
 
 # evaluate_conf_range(
 #     model,

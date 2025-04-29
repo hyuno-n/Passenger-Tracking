@@ -6,6 +6,7 @@ from matplotlib.patches import Rectangle
 from ultralytics import YOLO
 from matplotlib.widgets import Button
 
+
 # ===== 설정 =====
 BASE_DIR = "data/scen_output"
 VIEWS = ["view_-40", "view_0", "view_40"]
@@ -14,7 +15,7 @@ VIEW_COLORS = {
     "view_0": 'green',
     "view_40": 'red'
 }
-SCENARIOS_TO_VIEW = ["scen2"]  # 원하는 시나리오만 보기
+SCENARIOS_TO_VIEW = ["scen1"]  # 원하는 시나리오만 보기
 SAVE_OUTPUT = True
 SAVE_DIR = "viz_output"
 os.makedirs(SAVE_DIR, exist_ok=True)
