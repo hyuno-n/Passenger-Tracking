@@ -6,6 +6,7 @@ from matplotlib.patches import Rectangle
 from ultralytics import YOLO
 from matplotlib.widgets import Button
 
+
 # ===== 설정 =====
 BASE_DIR = "data/scen_output"
 VIEWS = ["view_-40", "view_0", "view_40"]
@@ -14,25 +15,25 @@ VIEW_COLORS = {
     "view_0": 'green',
     "view_40": 'red'
 }
-SCENARIOS_TO_VIEW = ["scen7"]  # 원하는 시나리오만 보기
+SCENARIOS_TO_VIEW = ["scen1"]  # 원하는 시나리오만 보기
 SAVE_OUTPUT = True
 SAVE_DIR = "viz_output"
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 # ===== YOLO 모델 로드 =====
-model = YOLO("runs/detect/head_finetuned2/weights/best.pt")
+model = YOLO("runs/detect/add_tire_finetune_freeze/weights/best.pt")
 
 # ===== Homography 행렬 및 패딩 =====
 H_map = {
-    "view_40": (np.array([[-1.46210375e+00,  8.60075220e+00,  2.73692268e+03],
-                           [-5.29493124e+00,  4.18599281e+00,  4.20388569e+03],
-                           [-4.21451893e-03,  3.45669963e-02,  1.00000000e+00]]), (500, 150)),
-    "view_0": (np.array([[-2.54814779e-01,  3.02230300e-02,  4.89775051e+02],
-                          [-5.03690736e-04,  3.02718132e-01, -4.52354576e+01],
-                          [-1.52079224e-05,  7.02600897e-05,  1.00000000e+00]]), (300, 150)),
-    "view_-40": (np.array( [[-2.42508598e-01, -2.06890148e+00,  7.57801477e+02],
-                            [-7.87968226e-01, -5.71032036e-01,  6.23032341e+02],
-                            [-6.41045657e-04, -4.78356023e-03,  1.00000000e+00]]), (300, 150)),
+    "view_40": (np.array([[ 3.39218386e-01, -2.61378020e+00, -2.41384154e+02],
+               [ 1.23077482e+00, -1.09011484e+00, -8.55740148e+02],
+               [ 8.33939613e-04, -9.20352638e-03,  1.00000000e+00]]), (500, 150)),
+    "view_0": (np.array([[ -1.84509850e-01,  8.03468203e-02,  5.25063189e+02],
+							[ 4.81525443e-02,  3.72219168e-01, -8.28806408e+01],
+							[ 2.24470429e-04,  2.05735101e-04,  1.00000000e+00]]), (300, 150)),
+    "view_-40": (np.array([[ -5.95639903e-01, -4.92610298e+00,  1.36820095e+03],
+							[-1.89307888e+00, -1.34889107e+00,  1.32959556e+03],
+							[-1.56119349e-03, -1.07253880e-02,  1.00000000e+00]]), (300, 150)),
 }
 REAL_AREA = np.array([[0, 0], [0, 240], [550, 240], [550, 0]], dtype=np.float32)
 
@@ -63,7 +64,7 @@ def generate_seat_boxes():
 
 # ===== YOLO + Homography 적용 =====
 def detect_and_project(image, H, padding):
-    results = model.predict(source=image, conf=0.3, verbose=False)[0]
+    results = model.predict(source=image, conf=0.5, verbose=False)[0]
     people = []
     for box in results.boxes:
         x1, y1, x2, y2 = map(float, box.xyxy[0])

@@ -9,34 +9,34 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 
 # YOLO 모델 로드
-model = YOLO("runs/detect/head_finetuned_freeze2/weights/best.pt")
+model = YOLO("runs/detect/add_tire_finetune_freeze/weights/best.pt")
 
-# 📌 좌석 정의 (순서 중요: S1 ~ S15)
-seat_width, seat_height = 75, 50
+seat_width = 75
+seat_height = 50
 seat_start_x = 30
 seats = []
 
-# 앞줄 (좌석 1~7, 6~7은 y + 20)
+# 앞줄 (S1~S7), S6~S7 (index 5,6)는 y + 20
 for col in range(7):
     x = seat_start_x + col * seat_width
     y = 0 if col < 5 else 20
     seats.append((x, y))
 
-# 뒷줄 (좌석 8~12)
+# 뒷줄 (S8~S12)
 for col in range(5):
     x = seat_start_x + col * seat_width
     y = 50
     seats.append((x, y))
 
-# 후면 좌석 (13~15), 14~15 사이 여백 포함
-rear_offsets = [
-    (2 * seat_width, 190),               # 좌석 13
-    (3 * seat_width + 10, 170),          # 좌석 14 (y=170)
-    (4 * seat_width + 20, 170)           # 좌석 15 (y=170)
+# 후면 좌석 (S13~S15), 여백 반영
+rear_xs = [
+    seat_start_x + 2 * seat_width,
+    seat_start_x + 2 * seat_width + 85,
+    seat_start_x + 2 * seat_width + 170
 ]
-for offset_x, y in rear_offsets:
-    x = seat_start_x + offset_x
-    seats.append((x, y))
+rear_y = 170
+for x in rear_xs:
+    seats.append((x, rear_y))
 
 # Homography 행렬 + padding (각도별)
 homographies_default = {
@@ -67,6 +67,12 @@ REAL_AREA = np.array([[0, 0], [0, 240], [550, 240], [550, 0]], dtype=np.float32)
 seat_ids = [f"S{i}" for i in range(1, 16)]
 
 # ========= 유틸 함수 =========
+def get_seat_size(index):
+    if index >= 12:  # S13~S15
+        return 85, 70
+    else:
+        return 75, 50
+
 def extract_number(filename):
     match = re.search(r'\d+', filename)
     return int(match.group()) if match else float('inf')
@@ -96,11 +102,13 @@ def predict_occupancy(people):
     occupied = [0] * len(seats)
     for (px, py) in people:
         for idx, (x, y) in enumerate(seats):
-            if x <= px <= x + seat_width and y <= py <= y + seat_height:
+            w, h = get_seat_size(idx)
+            if x <= px <= x + w and y <= py <= y + h:
                 occupied[idx] = 1
     return occupied
 
 def visualize_seat_detection_rate(seat_stats):
+    from collections import defaultdict
     total = defaultdict(int)
     for sid in seat_ids:
         for k in seat_stats[sid]:
@@ -110,27 +118,36 @@ def visualize_seat_detection_rate(seat_stats):
     print(f"False Positive (FP): {total['FP']}")
     print(f"False Negative (FN): {total['FN']}")
     print(f"True Negative (TN): {total['TN']}")
-    seat_labels = [f"S{i}" for i in range(1, 16)]
+    # ✅ 좌석별 지표 출력 + 수치 포함
+    print("\n📈 좌석별 성능 지표 (TP, FP, FN 포함):")
+    for sid, val in seat_stats.items():
+        tp, fp, fn, tn = val["TP"], val["FP"], val["FN"], val["TN"]
+        prec = tp / (tp + fp) if (tp + fp) else 0
+        rec = tp / (tp + fn) if (tp + fn) else 0
+        f1s = 2 * prec * rec / (prec + rec) if (prec + rec) else 0
+        print(f"{sid}: TP={tp}, FP={fp}, FN={fn}, TN={tn} → Precision={prec:.3f}, Recall={rec:.3f}, F1={f1s:.3f}")
     acc = []
-    for s in seat_labels:
-        tp = seat_stats[s]["TP"]
-        fn = seat_stats[s]["FN"]
+    for sid in seat_ids:
+        tp = seat_stats[sid]["TP"]
+        fn = seat_stats[sid]["FN"]
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0
         acc.append(recall)
+
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.set_xlim(0, 550)
     ax.set_ylim(0, 240)
     ax.invert_yaxis()
     ax.set_title("Seat-wise Detection Recall")
+
     for i, (x, y) in enumerate(seats):
+        w, h = get_seat_size(i)
         color = plt.cm.Reds(acc[i])
-        rect = plt.Rectangle((x, y), seat_width, seat_height, facecolor=color, edgecolor='black')
+        rect = plt.Rectangle((x, y), w, h, facecolor=color, edgecolor='black')
         ax.add_patch(rect)
-        ax.text(x + seat_width/2, y + seat_height/2, f"{seat_labels[i]}\n{acc[i]*100:.1f}%",
+        ax.text(x + w/2, y + h/2, f"{seat_ids[i]}\n{acc[i]*100:.1f}%",
                 ha='center', va='center', fontsize=9, color='white' if acc[i] > 0.5 else 'black')
     plt.tight_layout()
     plt.show()
-
 
 def draw_predictions(img_path, view, scenario_index):
     img = cv2.imread(img_path)
@@ -276,8 +293,8 @@ def evaluate_conf_range(model, base_dir, label_dir, seat_ids, apply_homography, 
 
 # ========= 평가 루프 =========
 base_dir = "data/scen_output"
-label_dir = "data/scen_label"
-
+label_dir = "data/scen_label/center_camera"
+total_stats = {sid: {"TP": 0, "FP": 0, "FN": 0, "TN": 0} for sid in seat_ids}
 for scen in sorted(os.listdir(base_dir), key=lambda s: int(re.search(r'scen(\d+)', s).group(1))):
     if not scen.startswith("scen"):
         continue
@@ -297,6 +314,7 @@ for scen in sorted(os.listdir(base_dir), key=lambda s: int(re.search(r'scen(\d+)
 
     filenames = sorted([f for f in os.listdir(view_paths["view_0"]) if f.endswith(".jpg")], key=extract_number)
     seat_stats = {sid: {"TP": 0, "FP": 0, "FN": 0, "TN": 0} for sid in seat_ids}
+    
     fp_frames = defaultdict(list)
     fn_frames = defaultdict(list)
 
@@ -335,10 +353,33 @@ for scen in sorted(os.listdir(base_dir), key=lambda s: int(re.search(r'scen(\d+)
                         fp_frames[view].append(fp_path)
             else:
                 seat_stats[sid]["TN"] += 1
+    for sid in seat_ids:
+        for key in ["TP", "FP", "FN", "TN"]:
+            total_stats[sid][key] += seat_stats[sid][key]
 
-    visualize_seat_detection_rate(seat_stats)
-    show_fp_images(fp_frames, scenario_index)
-    show_fn_images(fn_frames, scenario_index)
+print("\n📊 전체 통합 결과:")
+TP = sum([v["TP"] for v in total_stats.values()])
+FP = sum([v["FP"] for v in total_stats.values()])
+FN = sum([v["FN"] for v in total_stats.values()])
+TN = sum([v["TN"] for v in total_stats.values()])
+
+precision = TP / (TP + FP) if (TP + FP) else 0
+recall = TP / (TP + FN) if (TP + FN) else 0
+f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0
+
+print(f"TP: {TP} | FP: {FP} | FN: {FN} | TN: {TN}")
+print(f"Precision: {precision:.3f} | Recall: {recall:.3f} | F1 Score: {f1:.3f}")
+
+print("\n📈 좌석별 통합 성능 지표:")
+for sid, val in total_stats.items():
+    tp, fp, fn, tn = val["TP"], val["FP"], val["FN"], val["TN"]
+    prec = tp / (tp + fp) if (tp + fp) else 0
+    rec = tp / (tp + fn) if (tp + fn) else 0
+    f1s = 2 * prec * rec / (prec + rec) if (prec + rec) else 0
+    print(f"{sid}: TP={tp}, FP={fp}, FN={fn}, TN={tn} → Precision={prec:.3f}, Recall={rec:.3f}, F1={f1s:.3f}")
+    # visualize_seat_detection_rate(seat_stats)
+    # show_fp_images(fp_frames, scenario_index)
+    # show_fn_images(fn_frames, scenario_index)
 
 # evaluate_conf_range(
 #     model,

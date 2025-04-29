@@ -3,6 +3,8 @@ boost_track/external/
 data/
 dataset/
 INIT_BoostTrack/
+runs/
+bus_dataset/
 *.xml
 *.jpg
 *.png
@@ -11,3 +13,4 @@ INIT_BoostTrack/
 *.tar
 *.avi
 *.pt
+*.txt

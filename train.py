@@ -6,15 +6,14 @@ model = YOLO("head.pt")
 # Freeze 전략 적용 학습
 model.train(
     data="bus_dataset/head_data.yaml",
-    epochs=100,             
+    epochs=100,
     batch=16,
     imgsz=640,
-    lr0=0.0005,             # 느리게 fine-tune
-    name="add_tire_finetune_freeze",  # 모델 이름
-    freeze=10,              # 앞쪽 10개 레이어 freeze
-    patience=20,            # early stopping
-    cos_lr=True,            # cosine decay
-    device=0                # GPU 사용
+    lr0=0.0005,
+    name="head_finetuned_fpboost",
+    patience=20,
+    cos_lr=True,
+    device=0  # or "cuda:0"
 )
 
-print("✅ Freeze 기반 학습 완료! 모델: runs/detect/add_tire_finetune_freeze/weights/best.pt")
+print("✅ Freeze 기반 학습 완료! 모델: runs/detect/finetune_freeze/weights/best.pt")

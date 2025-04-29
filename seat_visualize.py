@@ -24,16 +24,21 @@ def draw_seat_boxes_on_image(image, H_inv, padding, color=(0, 255, 255), seat_wi
 
     # 후면 좌석 (13~15), 14~15 사이 여백 포함
     rear_offsets = [
-        (2 * seat_width, 190),               # 좌석 13
-        (3 * seat_width + 10, 170),          # 좌석 14 (y=170)
-        (4 * seat_width + 20, 170)           # 좌석 15 (y=170)
+        (2 * 75 , 170),               # 좌석 13
+        (2 * 75 + 85, 170),          # 좌석 14 (y=170)
+        (2 * 75 + 170, 170)           # 좌석 15 (y=170)
     ]
     for offset_x, y in rear_offsets:
         x = seat_start_x + offset_x
         seats.append((x, y))
 
     # 📐 좌석 박스를 투영하고 그리기
-    for (x, y) in seats:
+    for idx, (x, y) in enumerate(seats):
+        if idx >= 12:    # S13, S14, S15
+            seat_width, seat_height = 85, 70
+        else:
+            seat_width, seat_height = 75, 50
+
         box = np.array([[
             [x, y],
             [x + seat_width, y],
@@ -45,6 +50,7 @@ def draw_seat_boxes_on_image(image, H_inv, padding, color=(0, 255, 255), seat_wi
         projected -= np.array(padding, dtype=np.float32)
         projected = projected.astype(int)
         cv2.polylines(overlay, [projected], isClosed=True, color=color, thickness=2)
+
 
     return overlay
 

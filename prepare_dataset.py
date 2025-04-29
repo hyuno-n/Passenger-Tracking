@@ -5,14 +5,11 @@ from glob import glob
 
 # 원본 데이터 폴더들
 src_dirs = [
-    "head_dataset/labelImg_150d_car1_cam1",
-    "head_dataset/labelImg_150d_car1_cam2",
-    "head_dataset/labelImg_150d_car2_cam1",
-    "head_dataset/labelImg_150d_car2_cam2"
+    "extracted_images_3frames",
 ]
 
 # 결과 저장 경로
-dst_root = "dataset"
+dst_root = "bus_dataset"
 img_dst = os.path.join(dst_root, "images")
 lbl_dst = os.path.join(dst_root, "labels")
 
