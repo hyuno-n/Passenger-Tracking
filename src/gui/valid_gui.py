@@ -161,7 +161,6 @@ class SeatEvaluationApp(QWidget):
             self.current_frame -= 1
             self.load_frame_image()
 
-
     def select_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "이미지 폴더 선택")
         if folder:
@@ -190,8 +189,6 @@ class SeatEvaluationApp(QWidget):
         with open(save_path, 'w') as f:
             json.dump(self.all_results, f, indent=2)
         print(f"결과가 {save_path}에 저장되었습니다.")
-
-
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

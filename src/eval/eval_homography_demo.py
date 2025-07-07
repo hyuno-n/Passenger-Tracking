@@ -11,25 +11,9 @@ import matplotlib.pyplot as plt
 # ✅ 모델 로딩
 model = YOLO("runs/detect/add_tire_finetune_freeze/weights/best.pt")
 
-# ✅ Homography 행렬 및 패딩 설정
-homographies = {
-    "front": {
-        "H": np.array([
-            [6.06036999e-03,  2.15704280e-01, -2.04480699e+02],
-            [4.31094911e-01, -3.99161955e-01, -1.56359721e+02],
-            [1.00314085e-04, -2.97126407e-03, 1.00000000e+00]
-        ]),
-        "pad": (300, 150)
-    },
-    "rear": {
-        "H": np.array([
-            [3.12293052e-01, -3.06614997e+00, 9.23450556e+02],
-            [-5.61703036e-01, -5.89954372e-01, 5.55107180e+02],
-            [6.31420942e-04, -4.62906929e-03, 1.00000000e+00]
-        ]),
-        "pad": (300, 150)
-    }
-}
+# ✅ 평가 루프
+base_dir = "data/front_rear_data"
+label_dir = "data/scen_label/front_rear_camera"
 
 # ✅ 좌석 정의
 def define_seats():
@@ -57,6 +41,26 @@ SEATS = define_seats()
 REAL_AREA = np.array([[0, 0], [0, 240], [550, 240], [550, 0]], dtype=np.float32)
 SEAT_IDS = [f"S{i}" for i in range(1, 16)]
 SAVE_DIR = "results"
+
+# ✅ Homography 행렬 및 패딩 설정
+homographies = {
+    "front": {
+        "H": np.array([
+            [6.06036999e-03,  2.15704280e-01, -2.04480699e+02],
+            [4.31094911e-01, -3.99161955e-01, -1.56359721e+02],
+            [1.00314085e-04, -2.97126407e-03, 1.00000000e+00]
+        ]),
+        "pad": (300, 150)
+    },
+    "rear": {
+        "H": np.array([
+            [3.12293052e-01, -3.06614997e+00, 9.23450556e+02],
+            [-5.61703036e-01, -5.89954372e-01, 5.55107180e+02],
+            [6.31420942e-04, -4.62906929e-03, 1.00000000e+00]
+        ]),
+        "pad": (300, 150)
+    }
+}
 
 def get_seat_size(index):
     return (75, 60) if index >= 12 else (75, 50)
@@ -146,32 +150,6 @@ def fig_to_image(fig):
     img = cv2.imdecode(img_arr, 1)
     return img
 
-# ✅ 평가 루프
-base_dir = "data/front_rear_data"
-label_dir = "data/scen_label/front_rear_camera"
-
-def draw_detections_with_inverse_seats(image, results, H, pad, seats=SEATS):
-    img = image.copy()
-    for r in results:
-        for box in r.boxes:
-            if int(box.cls) == 0:
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-                conf = float(box.conf[0])
-                cv2.rectangle(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
-                cv2.putText(img, f"{conf:.2f}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX,
-                            0.6, (255, 255, 255), 2, cv2.LINE_AA)
-    for idx, (x, y) in enumerate(seats):
-        w, h = get_seat_size(idx)
-        corners = get_seat_corners(x, y, w, h)
-        projected_box = apply_inverse_homography(corners, H)
-        projected_box -= np.array(pad, dtype=np.float32)
-        projected_box = projected_box.astype(int)
-        cv2.polylines(img, [projected_box], isClosed=True, color=(0, 255, 0), thickness=2)
-        sx, sy = projected_box[0]
-        cv2.putText(img, f"S{idx+1}", (sx, sy - 5), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5, (0, 255, 0), 1, cv2.LINE_AA)
-    return img
-
 def draw_flat_seat_layout(seats=SEATS, all_points_by_view=None, title=None, seat_stats=None):
     import matplotlib.pyplot as plt
 
@@ -211,7 +189,6 @@ def draw_flat_seat_layout(seats=SEATS, all_points_by_view=None, title=None, seat
 
     fig.tight_layout()
     return fig
-
 
 def plot_and_save_combined_figure(front_img, rear_img, seat_layout_img, save_path):
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
@@ -309,7 +286,6 @@ def evaluate_all_scenarios():
             r = tp / (tp + fn) if (tp + fn) else 0
             f1s = 2 * p * r / (p + r) if (p + r) else 0
             print(f"{sid}: TP={tp}, FP={fp}, FN={fn}, TN={tn} → Precision={p:.3f}, Recall={r:.3f}, F1={f1s:.3f}")
-
 
 if __name__ == "__main__":
     evaluate_all_scenarios()
